@@ -1,0 +1,181 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
+import { createServer } from "node:net";
+import { DatabaseSync } from "node:sqlite";
+import test from "node:test";
+
+async function freePort() {
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}
+
+test("membership, moderation and photo permissions survive server storage", async () => {
+  const testRoot = process.env.DATABASE_PATH ? dirname(process.env.DATABASE_PATH) : tmpdir();
+  const temp = mkdtempSync(join(testRoot, "sai-api-test-"));
+  const port = await freePort();
+  const origin = "http://127.0.0.1:3001";
+  const base = `http://127.0.0.1:${port}/api`;
+  const child = spawn(process.execPath, ["dist/main.js"], {
+    cwd: process.cwd(),
+    env: { ...process.env, PORT: String(port), DATABASE_PATH: join(temp, "test.sqlite"), UPLOAD_DIR: join(temp, "uploads"), ADMIN_PASSWORD: "TestPass12!x", CHURCH_NAME: "테스트교회", FRONTEND_ORIGIN: origin },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let childStderr = "";
+  child.stderr.on("data", (chunk) => { childStderr = (childStderr + chunk.toString()).slice(-2000); });
+  let memberCookie = "";
+  let adminCookie = "";
+  async function call(path, method = "GET", body, cookie = "") {
+    const headers = { ...(method === "GET" ? {} : { Origin: origin }), ...(cookie ? { Cookie: cookie } : {}) };
+    if (body && !(body instanceof FormData)) headers["Content-Type"] = "application/json";
+    const response = await fetch(base + path, { method, headers, body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined });
+    return { response, data: await response.json().catch(() => null), cookie: response.headers.get("set-cookie")?.split(";")[0] ?? "" };
+  }
+  try {
+    let ready = false;
+    for (let i = 0; i < 150; i++) {
+      if (child.exitCode !== null) throw new Error(`API exited before startup: ${childStderr}`);
+      try { await fetch(base + "/auth/me"); ready = true; break; } catch { await new Promise((resolve) => setTimeout(resolve, 100)); }
+    }
+    assert.equal(ready, true, childStderr);
+    const localLogin = await fetch(base + "/auth/admin/login", { method: "POST", headers: { Origin: "http://localhost:3001", "Content-Type": "application/json" }, body: JSON.stringify({ password: "wrong" }) });
+    assert.equal(localLogin.status, 401);
+    const foreignLogin = await fetch(base + "/auth/admin/login", { method: "POST", headers: { Origin: "http://example.com", "Content-Type": "application/json" }, body: JSON.stringify({ password: "wrong" }) });
+    assert.equal(foreignLogin.status, 403);
+    assert.equal((await call("/admin/dashboard")).response.status, 401);
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+    const datePart = (type) => parts.find((part) => part.type === type).value;
+    const today = `${datePart("year")}-${datePart("month")}-${datePart("day")}`;
+    const daily = await call("/daily-word");
+    assert.equal(daily.response.status, 200);
+    assert.equal(daily.data.date, today);
+    const plannedToday = await call(`/daily-word?date=${today}`);
+    assert.deepEqual(daily.data, plannedToday.data);
+    assert.equal(daily.data.source, "plan");
+    assert.match(daily.data.readingUrl, /^https:\/\/bible\.bskorea\.or\.kr\/bible\/NKRV\/[A-Z0-9]+\.\d+$/);
+    const first = (await call("/daily-word?date=2026-10-02")).data;
+    const second = (await call("/daily-word?date=2026-10-03")).data;
+    const again = (await call("/daily-word?date=2026-11-01")).data;
+    assert.equal(first.reference, "히브리서 13:1");
+    assert.equal(second.reference, "로마서 12:10");
+    assert.notEqual(first.question, second.question);
+    assert.equal(again.reference, first.reference);
+    assert.equal((await call("/daily-word?date=2026-10-03")).data.readingUrl, "https://bible.bskorea.or.kr/bible/NKRV/ROM.12");
+    assert.equal((await call("/daily-word?date=2026-02-30")).response.status, 400);
+    assert.equal((await call("/daily-word?date=2026-01-01")).response.status, 200);
+    assert.equal((await call("/admin/daily-words")).response.status, 401);
+    const memberPassword = "MemberPass12";
+    assert.equal((await call("/auth/signup", "POST", { name: "테스트", phone: "010-5555-4321", church: "테스트교회", consent: true, password: "MemberPass1" })).response.status, 400);
+    const signup = await call("/auth/signup", "POST", { name: "테스트", phone: "010-5555-4321", church: "테스트교회", consent: true, password: memberPassword });
+    assert.equal(signup.response.status, 201);
+    const duplicate = await call("/auth/signup", "POST", { name: "다른 이름", phone: "010-5555-4321", church: "테스트교회", consent: true, password: memberPassword });
+    assert.equal(duplicate.response.status, 409);
+    assert.match(duplicate.data.message, /이미 가입/);
+    memberCookie = signup.cookie;
+    assert.equal(signup.data.hasPassword, true);
+    const legacyDb = new DatabaseSync(join(temp, "test.sqlite"));
+    legacyDb.prepare("UPDATE members SET password_hash=NULL WHERE id=?").run(signup.data.id);
+    legacyDb.close();
+    assert.equal((await call("/auth/me", "GET", undefined, memberCookie)).data.hasPassword, false);
+    assert.equal((await call("/auth/password", "POST", { password: "MemberPass1" }, memberCookie)).response.status, 400);
+    assert.equal((await call("/auth/password", "POST", { password: memberPassword }, memberCookie)).response.status, 201);
+    assert.equal((await call("/auth/logout", "POST", undefined, memberCookie)).response.status, 201);
+    assert.equal((await call("/auth/me", "GET", undefined, memberCookie)).response.status, 401);
+    assert.equal((await call("/auth/login", "POST", { phone: "010-5555-4321", password: "incorrect-passphrase" })).response.status, 401);
+    const memberLogin = await call("/auth/login", "POST", { phone: "010-5555-4321", password: memberPassword });
+    assert.equal(memberLogin.response.status, 201);
+    assert.equal(memberLogin.data.status, "pending");
+    memberCookie = memberLogin.cookie;
+    assert.equal((await call("/community", "GET", undefined, memberCookie)).response.status, 403);
+    const admin = await call("/auth/admin/login", "POST", { password: "TestPass12!x" });
+    assert.equal(admin.response.status, 201);
+    adminCookie = admin.cookie;
+    const anotherDate = today === "2026-01-01" ? "2026-01-02" : "2026-01-01";
+    assert.equal((await call(`/admin/daily-words/${anotherDate}`, "PUT", { reference: "요한복음 15:12", verse: "서로 사랑하라.", question: "오늘 누구를 사랑으로 대할까요?", readingUrl: "javascript:alert(1)" }, adminCookie)).response.status, 400);
+    assert.equal((await call(`/admin/daily-words/${anotherDate}`, "PUT", { reference: "요한복음 15:12", verse: "사랑을 나눠요.", question: "오늘 누구를 사랑으로 대할까요?", readingUrl: "https://example.com/bible" }, adminCookie)).response.status, 400);
+    const nextDaily = await call(`/admin/daily-words/${anotherDate}`, "PUT", { reference: "요한복음 15:12", verse: "사랑을 나눠요.", question: "오늘 누구를 사랑으로 대할까요?", readingUrl: null }, adminCookie);
+    assert.equal(nextDaily.response.status, 200);
+    assert.equal((await call(`/daily-word?date=${anotherDate}`)).data.question, "오늘 누구를 사랑으로 대할까요?");
+    assert.equal((await call(`/daily-word?date=${anotherDate}`)).data.source, "custom");
+    assert.equal((await call(`/daily-word?date=${anotherDate}`)).data.readingUrl, "https://bible.bskorea.or.kr/bible/NKRV/JHN.15");
+    assert.equal((await call("/admin/daily-words", "GET", undefined, adminCookie)).data.length, 1);
+    const operator = await call("/admin/accounts", "POST", { name: "부운영자", account: "helper01", password: "another-strong-password-123" }, adminCookie);
+    assert.equal(operator.response.status, 201);
+    const helper = await call("/auth/admin/login", "POST", { account: "helper01", password: "another-strong-password-123" });
+    assert.equal(helper.response.status, 201);
+    assert.equal((await call("/admin/accounts", "POST", { name: "제삼자", account: "helper02", password: "another-strong-password-456" }, helper.cookie)).response.status, 403);
+    const list = await call("/admin/approvals", "GET", undefined, adminCookie);
+    assert.equal(list.data.length, 1);
+    assert.equal(list.data[0].phone, "010-5555-4321");
+    assert.equal((await call(`/admin/approvals/${list.data[0].id}/approve`, "POST", undefined, adminCookie)).response.status, 201);
+    assert.equal((await call("/auth/me", "GET", undefined, memberCookie)).data.status, "approved");
+    assert.equal((await call("/admin/members", "GET", undefined, adminCookie)).data[0].phone, "010-5555-4321");
+    const notice = await call("/admin/notices", "POST", { title: "이번 주 공지", body: "함께 예배해요", status: "published" }, adminCookie);
+    assert.equal(notice.response.status, 201);
+    assert.equal((await call("/community", "GET", undefined, memberCookie)).data.notices[0].title, "이번 주 공지");
+    const word = await call("/words", "POST", { text: "은혜를 나눕니다" }, memberCookie);
+    assert.equal(word.response.status, 201);
+    assert.equal(word.data.date, today);
+    assert.equal((await call(`/words?date=${today}`, "GET", undefined, memberCookie)).data.length, 1);
+    assert.equal((await call(`/words?date=${anotherDate}`, "GET", undefined, memberCookie)).data.length, 0);
+    const olderWord = await call("/words", "POST", { text: "다른 날의 나눔", date: anotherDate }, memberCookie);
+    assert.equal(olderWord.response.status, 201);
+    assert.equal((await call(`/words?date=${anotherDate}`, "GET", undefined, memberCookie)).data[0].text, "다른 날의 나눔");
+    assert.equal((await call("/words?date=2026-02-30", "GET", undefined, memberCookie)).response.status, 400);
+    assert.equal((await call("/words", "POST", { text: "자동 순환표 나눔", date: "2026-01-03" }, memberCookie)).response.status, 201);
+    assert.ok((await call("/community", "GET", undefined, memberCookie)).data.wordPosts.some((post) => post.text === "은혜를 나눕니다" && post.date === today));
+    const report = await call("/reports", "POST", { kind: "word", postId: word.data.id, reason: "검토 요청" }, memberCookie);
+    assert.equal(report.response.status, 201);
+    assert.equal((await call("/admin/reports", "GET", undefined, adminCookie)).data[0].excerpt, "은혜를 나눕니다");
+    assert.equal((await call(`/admin/reports/${report.data.id}/resolve`, "POST", { action: "hide", resolution: "검토 후 숨김" }, adminCookie)).response.status, 201);
+    const remainingWords = (await call("/community", "GET", undefined, memberCookie)).data.wordPosts;
+    assert.equal(remainingWords.length, 2);
+    assert.ok(remainingWords.some((post) => post.id === olderWord.data.id));
+    const image = new FormData();
+    image.set("caption", "함께한 날"); image.set("peopleConsent", "true"); image.set("locationConsent", "true");
+    image.set("image", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==", "base64")], { type: "image/png" }), "one.png");
+    const photo = await call("/photos", "POST", image, memberCookie);
+    assert.equal(photo.response.status, 201);
+    const comment = await call(`/photos/${photo.data.id}/comments`, "POST", { text: "좋아요" }, memberCookie);
+    assert.equal(comment.response.status, 201);
+    assert.equal((await call(`/photos/${photo.data.id}/comments/${comment.data.id}`, "PATCH", { text: "정말 좋아요" }, memberCookie)).response.status, 200);
+    assert.equal((await call(`/photos/${photo.data.id}`, "GET", undefined, memberCookie)).data.comments[0].text, "정말 좋아요");
+    const reset = await call(`/admin/members/${list.data[0].id}/reset-password`, "POST", undefined, adminCookie);
+    assert.equal(reset.response.status, 201);
+    assert.ok(reset.data.password.length >= 12);
+    assert.equal((await call("/auth/me", "GET", undefined, memberCookie)).response.status, 401);
+    assert.equal((await call("/auth/login", "POST", { phone: "010-5555-4321", password: memberPassword })).response.status, 401);
+    const resetLogin = await call("/auth/login", "POST", { phone: "010-5555-4321", password: reset.data.password });
+    assert.equal(resetLogin.response.status, 201);
+    assert.equal(resetLogin.data.status, "approved");
+    assert.equal(resetLogin.data.mustChangePassword, true);
+    assert.equal((await call("/auth/me", "GET", undefined, resetLogin.cookie)).data.mustChangePassword, true);
+    const blockedUntilChange = await call("/community", "GET", undefined, resetLogin.cookie);
+    assert.equal(blockedUntilChange.response.status, 403);
+    assert.equal(blockedUntilChange.data.message, "임시 비밀번호를 변경해 주세요.");
+    assert.equal((await call("/auth/change-password", "POST", { currentPassword: "wrong", newPassword: "NewMemberPass12" }, resetLogin.cookie)).response.status, 401);
+    assert.equal((await call("/auth/change-password", "POST", { currentPassword: reset.data.password, newPassword: "short" }, resetLogin.cookie)).response.status, 400);
+    assert.equal((await call("/auth/change-password", "POST", { currentPassword: reset.data.password, newPassword: reset.data.password }, resetLogin.cookie)).response.status, 400);
+    const changed = await call("/auth/change-password", "POST", { currentPassword: reset.data.password, newPassword: "NewMemberPass12" }, resetLogin.cookie);
+    assert.equal(changed.response.status, 201);
+    assert.equal(changed.data.mustChangePassword, false);
+    assert.equal((await call("/auth/me", "GET", undefined, resetLogin.cookie)).response.status, 401);
+    assert.equal((await call("/auth/me", "GET", undefined, changed.cookie)).data.mustChangePassword, false);
+    assert.equal((await call("/community", "GET", undefined, changed.cookie)).response.status, 200);
+    assert.equal((await call("/auth/login", "POST", { phone: "010-5555-4321", password: reset.data.password })).response.status, 401);
+    assert.equal((await call("/auth/login", "POST", { phone: "010-5555-4321", password: "NewMemberPass12" })).response.status, 201);
+    assert.equal((await call(`/admin/accounts/${operator.data.id}`, "DELETE", undefined, adminCookie)).response.status, 200);
+    assert.equal((await call("/admin/dashboard", "GET", undefined, helper.cookie)).response.status, 401);
+  } finally {
+    child.kill();
+    await new Promise((resolve) => child.once("exit", resolve));
+    assert.equal(dirname(resolve(temp)), resolve(testRoot));
+    assert.match(basename(temp), /^sai-api-test-/);
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
