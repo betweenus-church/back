@@ -18,7 +18,7 @@ export class DatabaseService implements OnModuleDestroy {
 
   private migrate() {
     const version = (this.db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-    if (version > 5) throw new Error(`Unsupported database version: ${version}`);
+    if (version > 10) throw new Error(`Unsupported database version: ${version}`);
     if (version === 0) this.db.exec(`
       BEGIN;
       CREATE TABLE members (
@@ -114,6 +114,68 @@ export class DatabaseService implements OnModuleDestroy {
         throw error;
       }
     }
+    if (version <= 5) this.db.exec(`
+      BEGIN;
+      CREATE TABLE news (
+        id INTEGER PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL,
+        category TEXT NOT NULL CHECK(category IN ('notice','gathering','story')),
+        status TEXT NOT NULL CHECK(status IN ('draft','published')),
+        cover_file TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        published_at TEXT, deleted_at TEXT
+      ) STRICT;
+      CREATE INDEX news_member_idx ON news(status,deleted_at,published_at DESC,id DESC);
+      CREATE INDEX news_admin_idx ON news(deleted_at,updated_at DESC,id DESC);
+      PRAGMA user_version = 6;
+      COMMIT;
+    `);
+    if (version <= 6) this.db.exec(`
+      BEGIN;
+      ALTER TABLE daily_words ADD COLUMN scripture_text TEXT;
+      ALTER TABLE daily_words ADD COLUMN scripture_version TEXT;
+      ALTER TABLE daily_words ADD COLUMN scripture_attribution TEXT;
+      PRAGMA user_version = 7;
+      COMMIT;
+    `);
+    if (version <= 7) this.db.exec(`
+      BEGIN;
+      ALTER TABLE members ADD COLUMN avatar_file TEXT;
+      PRAGMA user_version = 8;
+      COMMIT;
+    `);
+    if (version <= 8) this.db.exec(`
+      BEGIN;
+      CREATE TABLE push_subscriptions (
+        id INTEGER PRIMARY KEY,
+        member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX push_subscriptions_member_idx ON push_subscriptions(member_id);
+      CREATE TABLE push_deliveries (
+        date TEXT NOT NULL,
+        subscription_id INTEGER NOT NULL REFERENCES push_subscriptions(id) ON DELETE CASCADE,
+        PRIMARY KEY (date, subscription_id)
+      ) STRICT;
+      INSERT INTO settings(key,value) VALUES ('push_enabled','false'),('push_time','08:00');
+      PRAGMA user_version = 9;
+      COMMIT;
+    `);
+    if (version <= 9) this.db.exec(`
+      BEGIN;
+      CREATE TABLE inbox_items (
+        id INTEGER PRIMARY KEY,
+        member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK(kind IN ('photo_comment','prayer_support','news','announcement')),
+        title TEXT NOT NULL, body TEXT NOT NULL, url TEXT NOT NULL,
+        created_at TEXT NOT NULL, read_at TEXT, source_id INTEGER, actor_id INTEGER
+      ) STRICT;
+      CREATE INDEX inbox_member_idx ON inbox_items(member_id,id DESC);
+      CREATE INDEX inbox_unread_idx ON inbox_items(member_id,read_at);
+      PRAGMA user_version = 10;
+      COMMIT;
+    `);
   }
 
   onModuleDestroy() {

@@ -1,0 +1,71 @@
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [NestFactory] Starting Nest application...
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [InstanceLoader] AppModule dependencies initialized +34ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [InstanceLoader] DatabaseModule dependencies initialized +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [InstanceLoader] DailyWordModule dependencies initialized +2ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [InstanceLoader] NewsModule dependencies initialized +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [InstanceLoader] AdminModule dependencies initialized +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [InstanceLoader] AuthModule dependencies initialized +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [InstanceLoader] CommunityModule dependencies initialized +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RoutesResolver] AuthController {/api/auth}: +2ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/auth/signup, POST} route +2ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/auth/me, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/auth/login, POST} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/auth/password, POST} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/auth/change-password, POST} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/auth/logout, POST} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/auth/admin/login, POST} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/auth/admin/me, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/auth/admin/logout, POST} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RoutesResolver] CommunityController {/api}: +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/community, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/words, POST} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/words, GET} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/words/:id, DELETE} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/photos, POST} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/photos/:id, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/photos/:id/image, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/photos/:id, DELETE} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/photos/:id/like, POST} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/photos/:id/comments, POST} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/photos/:photoId/comments/:id, PATCH} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/photos/:photoId/comments/:id, DELETE} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/prayers, POST} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/prayers/:id, DELETE} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/prayers/:id/pray, POST} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/reports, POST} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RoutesResolver] DailyWordController {/api/daily-word}: +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/daily-word, GET} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RoutesResolver] AdminController {/api/admin}: +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/dashboard, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/approvals, GET} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/approvals/:id/approve, POST} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/approvals/:id/reject, POST} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/members, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/members/:id, PATCH} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/members/:id/status, PATCH} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/members/:id/reset-password, POST} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/reports, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/reports/:id/resolve, POST} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/settings, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/settings, PATCH} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/accounts, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/accounts, POST} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/accounts/:id, DELETE} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/notices, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/daily-words, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/daily-words/:date, PUT} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/notices, POST} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/notices/:id, PATCH} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RoutesResolver] MemberNewsController {/api/news}: +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/news, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/news/:id, GET} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/news/:id/cover, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RoutesResolver] AdminNewsController {/api/admin/news}: +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/news, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/news/:id, GET} route +1ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/news/:id/cover, GET} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/news, POST} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/news/:id, PATCH} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [RouterExplorer] Mapped {/api/admin/news/:id, DELETE} route +0ms
+[Nest] 45456  - 2026. 10. 05. 오전 12:18:17     LOG [NestApplication] Nest application successfully started +2ms
+[ELIFECYCLE] Command failed with exit code 4294967295.

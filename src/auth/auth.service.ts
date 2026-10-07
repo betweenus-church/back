@@ -49,7 +49,10 @@ export class AuthService {
 
   private issue(res: ApiResponse, name: string, role: "member" | "admin", memberId: number | null, adminId: number | null = null) {
     const token = randomBytes(32).toString("base64url");
-    const age = role === "admin" ? 8 * 3600 : 30 * 86400;
+    const adminDays = Number(process.env.ADMIN_SESSION_DAYS);
+    const age = role === "admin"
+      ? Number.isInteger(adminDays) && adminDays >= 1 && adminDays <= 30 ? adminDays * 86400 : 8 * 3600
+      : 30 * 86400;
     this.data.db.prepare("INSERT INTO sessions(token_hash,member_id,admin_id,role,expires_at) VALUES(?,?,?,?,?)").run(hash(token), memberId, adminId, role, Date.now() + age * 1000);
     this.setCookie(res, name, token, age);
   }
@@ -71,6 +74,14 @@ export class AuthService {
     return member;
   }
 
+  profile(member: MemberRow) {
+    return { id: member.id, name: member.name, church: member.church, status: member.status,
+      reason: member.reason, hasPassword: Boolean(member.password_hash),
+      mustChangePassword: Boolean(member.must_change_password),
+      avatarUrl: member.status === "approved" && !member.must_change_password && member.avatar_file
+        ? `/api/auth/me/avatar?v=${encodeURIComponent(member.avatar_file)}` : null };
+  }
+
   signup(body: unknown, res: ApiResponse) {
     const name = value(body, "name", 1, 30);
     const phone = value(body, "phone", 10, 13).replace(/\D/g, "");
@@ -84,7 +95,7 @@ export class AuthService {
     const now = new Date().toISOString();
     const id = Number(this.data.db.prepare("INSERT INTO members(name,phone,church,password_hash,created_at,updated_at) VALUES(?,?,?,?,?,?)").run(name, phone, church, passwordHash(password), now, now).lastInsertRowid);
     this.issue(res, "sai_member", "member", id);
-    return { id, name, church, status: "pending", hasPassword: true, mustChangePassword: false };
+    return { id, name, church, status: "pending", hasPassword: true, mustChangePassword: false, avatarUrl: null };
   }
 
   memberLogin(body: unknown, res: ApiResponse) {
@@ -101,7 +112,7 @@ export class AuthService {
     }
     this.memberAttempts.delete(phone);
     this.issue(res, "sai_member", "member", row.id);
-    return { id: row.id, name: row.name, church: row.church, status: row.status, reason: row.reason, hasPassword: true, mustChangePassword: Boolean(row.must_change_password) };
+    return this.profile(row);
   }
 
   setMemberPassword(req: ApiRequest, body: unknown) {
@@ -156,7 +167,14 @@ export class AuthService {
   logout(req: ApiRequest, res: ApiResponse, role: "member" | "admin") {
     const name = role === "admin" ? "sai_admin" : "sai_member";
     const token = cookie(req, name);
-    if (token) this.data.db.prepare("DELETE FROM sessions WHERE token_hash=?").run(hash(token));
+    if (token) {
+      const tokenHash = hash(token);
+      if (role === "member") {
+        const session = this.data.db.prepare("SELECT member_id FROM sessions WHERE token_hash=?").get(tokenHash) as { member_id: number | null } | undefined;
+        if (session?.member_id) this.data.db.prepare("DELETE FROM push_subscriptions WHERE member_id=?").run(session.member_id);
+      }
+      this.data.db.prepare("DELETE FROM sessions WHERE token_hash=?").run(tokenHash);
+    }
     this.setCookie(res, name, "", 0);
     return { ok: true };
   }

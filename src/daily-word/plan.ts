@@ -1,3 +1,5 @@
+import { scriptureTextByReference } from "./scripture-texts";
+
 // 2026-10-02부터 시작하는 30일 순환표. verse는 성경 번역문이 아닌 앱의 묵상 문구다.
 const entries = [
   ["히브리서 13:1", "서로를 향한 사랑을 이어 가요.", "오늘 공동체에 건넬 작은 친절은 무엇인가요?", "HEB.13"],
@@ -45,5 +47,7 @@ export function officialReadingUrl(reference: string): string {
 export function plannedWord(date: string) {
   const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.UTC(2026, 9, 2)) / 86_400_000);
   const [reference, verse, question, chapter] = entries[((days % entries.length) + entries.length) % entries.length];
-  return { date, reference, verse, question, readingUrl: `https://bible.bskorea.or.kr/bible/NKRV/${chapter}`, source: "plan" as const };
+  return { date, reference, verse, scriptureText: scriptureTextByReference[reference],
+    scriptureVersion: "개역한글판", scriptureAttribution: "대한성서공회",
+    question, readingUrl: `https://bible.bskorea.or.kr/bible/NKRV/${chapter}`, source: "plan" as const };
 }

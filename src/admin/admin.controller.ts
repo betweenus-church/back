@@ -18,6 +18,7 @@ export class AdminController {
   @Patch("members/:id/status") memberStatus(@Param("id", ParseIntPipe) id: number, @Body() body: unknown) { return this.admin.memberStatus(id, body); }
   @Post("members/:id/reset-password") resetMemberPassword(@Req() req: ApiRequest, @Param("id", ParseIntPipe) id: number) { this.auth.requireOwner(req); return this.admin.resetMemberPassword(id); }
   @Get("reports") reports() { return this.admin.reports(); }
+  @Get("reports/:id/image") reportImage(@Param("id", ParseIntPipe) id: number) { return this.admin.reportImage(id); }
   @Post("reports/:id/resolve") resolve(@Param("id", ParseIntPipe) id: number, @Body() body: unknown) { return this.admin.resolveReport(id, body); }
   @Get("settings") settings() { return this.admin.settings(); }
   @Patch("settings") updateSettings(@Body() body: unknown) { return this.admin.updateSettings(body); }

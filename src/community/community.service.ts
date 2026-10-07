@@ -5,9 +5,11 @@ import { resolve } from "node:path";
 import { DatabaseService } from "../database/database.service";
 import { seoulDate, validDate } from "../daily-word/date";
 import { DailyWordService } from "../daily-word/daily-word.service";
+import { ImageUpload, optimizeImage } from "../images/optimized-upload";
+import { InboxService } from "../inbox/inbox.service";
 
 type Row = Record<string, string | number | null>;
-export type Upload = { buffer: Buffer; size: number; mimetype: string };
+export type Upload = ImageUpload;
 function text(body: unknown, key: string, max: number) {
     const value = (body as Record<string, unknown> | null)?.[key];
     if (typeof value !== "string" || !value.trim() || value.trim().length > max)
@@ -21,21 +23,23 @@ function time(iso: string) {
     if (diff < 24 * 60 * 60_000) return `${Math.floor(diff / (60 * 60_000))}시간 전`;
     return iso.slice(0, 10);
 }
-function imageType(buffer: Buffer) {
-    if (buffer.length >= 3 && buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])))
-        return { type: "image/jpeg", ext: "jpg" };
-    if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
-        return { type: "image/png", ext: "png" };
-    if (buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP")
-        return { type: "image/webp", ext: "webp" };
-    throw new BadRequestException("Only JPEG, PNG and WebP images are supported");
+function authorAvatarUrl(row: Row) {
+    return row.author_status === "approved" && typeof row.author_avatar_file === "string"
+        ? `/api/auth/members/${row.member_id}/avatar?v=${encodeURIComponent(row.author_avatar_file)}` : null;
 }
-
 @Injectable()
 export class CommunityService {
     private readonly uploadDir = resolve(process.env.UPLOAD_DIR || "./data/uploads");
-    constructor(private readonly data: DatabaseService, private readonly dailyWord: DailyWordService) {
+    constructor(private readonly data: DatabaseService, private readonly dailyWord: DailyWordService, private readonly inbox: InboxService) {
         mkdirSync(this.uploadDir, { recursive: true });
+    }
+
+    noticeById(id: number) {
+        const notice = this.data.db.prepare(
+            "SELECT id,title,body,pinned,created_at AS createdAt FROM notices WHERE id=? AND status='published'",
+        ).get(id);
+        if (!notice) throw new NotFoundException("Notice not found");
+        return notice;
     }
 
     snapshot(memberId: number) {
@@ -50,12 +54,12 @@ export class CommunityService {
             .all();
         const words = db
             .prepare(
-                "SELECT w.*,m.name AS author FROM word_posts w JOIN members m ON m.id=w.member_id WHERE w.hidden=0 ORDER BY w.id DESC LIMIT 100",
+                "SELECT w.*,m.name AS author,m.avatar_file AS author_avatar_file,m.status AS author_status FROM word_posts w JOIN members m ON m.id=w.member_id WHERE w.hidden=0 ORDER BY w.id DESC LIMIT 100",
             )
             .all() as Row[];
         const photos = db
             .prepare(
-                `SELECT p.*,m.name AS author,
+                `SELECT p.*,m.name AS author,m.avatar_file AS author_avatar_file,m.status AS author_status,
       (SELECT count(*) FROM photo_likes l WHERE l.photo_id=p.id) AS likes,
       EXISTS(SELECT 1 FROM photo_likes l WHERE l.photo_id=p.id AND l.member_id=?) AS liked
       FROM photos p JOIN members m ON m.id=p.member_id WHERE p.hidden=0 ORDER BY p.id DESC LIMIT 100`,
@@ -74,6 +78,7 @@ export class CommunityService {
             wordPosts: words.map((row) => ({
                 id: row.id,
                 author: row.author,
+                authorAvatarUrl: authorAvatarUrl(row),
                 text: row.text,
                 time: time(String(row.created_at)),
                 date: row.daily_word_date,
@@ -94,7 +99,7 @@ export class CommunityService {
     private photo(row: Row, memberId: number) {
         const comments = this.data.db
             .prepare(
-                "SELECT c.*,m.name AS author FROM photo_comments c JOIN members m ON m.id=c.member_id WHERE c.photo_id=? AND c.hidden=0 ORDER BY c.id",
+                "SELECT c.*,m.name AS author,m.avatar_file AS author_avatar_file,m.status AS author_status FROM photo_comments c JOIN members m ON m.id=c.member_id WHERE c.photo_id=? AND c.hidden=0 ORDER BY c.id",
             )
             .all(row.id as number) as Row[];
         return {
@@ -104,12 +109,14 @@ export class CommunityService {
             tone: "leaf",
             mine: row.member_id === memberId,
             author: row.author,
+            authorAvatarUrl: authorAvatarUrl(row),
             imageUrl: `/api/photos/${row.id}/image`,
             likes: row.likes,
             liked: Boolean(row.liked),
             comments: comments.map((c) => ({
                 id: c.id,
                 author: c.author,
+                authorAvatarUrl: authorAvatarUrl(c),
                 text: c.text,
                 time: time(String(c.created_at)),
                 mine: c.member_id === memberId,
@@ -121,7 +128,7 @@ export class CommunityService {
     photoById(id: number, memberId: number) {
         const row = this.data.db
             .prepare(
-                `SELECT p.*,m.name AS author,
+                `SELECT p.*,m.name AS author,m.avatar_file AS author_avatar_file,m.status AS author_status,
       (SELECT count(*) FROM photo_likes l WHERE l.photo_id=p.id) AS likes,
       EXISTS(SELECT 1 FROM photo_likes l WHERE l.photo_id=p.id AND l.member_id=?) AS liked
       FROM photos p JOIN members m ON m.id=p.member_id WHERE p.id=? AND p.hidden=0`,
@@ -146,10 +153,10 @@ export class CommunityService {
     words(memberId: number, date?: string) {
         const target = date === undefined ? seoulDate() : validDate(date);
         const rows = this.data.db.prepare(
-            "SELECT w.id,w.member_id,w.text,w.created_at,w.daily_word_date,m.name AS author FROM word_posts w JOIN members m ON m.id=w.member_id WHERE w.hidden=0 AND w.daily_word_date=? ORDER BY w.id DESC LIMIT 100",
+            "SELECT w.id,w.member_id,w.text,w.created_at,w.daily_word_date,m.name AS author,m.avatar_file AS author_avatar_file,m.status AS author_status FROM word_posts w JOIN members m ON m.id=w.member_id WHERE w.hidden=0 AND w.daily_word_date=? ORDER BY w.id DESC LIMIT 100",
         ).all(target) as Row[];
         return rows.map((row) => ({
-            id: row.id, author: row.author, text: row.text,
+            id: row.id, author: row.author, authorAvatarUrl: authorAvatarUrl(row), text: row.text,
             time: time(String(row.created_at)), date: row.daily_word_date,
             mine: row.member_id === memberId,
         }));
@@ -159,15 +166,15 @@ export class CommunityService {
         if (!result.changes) throw new NotFoundException();
         return { ok: true };
     }
-    addPhoto(memberId: number, body: unknown, file?: Upload) {
+    async addPhoto(memberId: number, body: unknown, file?: Upload) {
         if (!file || file.size > 10 * 1024 * 1024) throw new BadRequestException("Image must be 10 MB or smaller");
         const caption = text(body, "caption", 120);
         const form = body as Record<string, unknown>;
         if (form.peopleConsent !== "true" || form.locationConsent !== "true")
             throw new BadRequestException("Photo sharing consent is required");
-        const kind = imageType(file.buffer);
-        const filename = `${randomUUID()}.${kind.ext}`;
-        writeFileSync(resolve(this.uploadDir, filename), file.buffer, { flag: "wx" });
+        const optimized = await optimizeImage(file);
+        const filename = `${randomUUID()}.${optimized.ext}`;
+        writeFileSync(resolve(this.uploadDir, filename), optimized.buffer, { flag: "wx" });
         try {
             const id = Number(
                 this.data.db
@@ -220,6 +227,7 @@ export class CommunityService {
                 .prepare("INSERT INTO photo_comments(photo_id,member_id,text,created_at) VALUES(?,?,?,?)")
                 .run(photoId, memberId, content, new Date().toISOString()).lastInsertRowid,
         );
+        this.inbox.photoComment(photoId, id, memberId, content);
         return { id };
     }
     editComment(memberId: number, photoId: number, id: number, body: unknown) {
@@ -259,8 +267,11 @@ export class CommunityService {
         const removed = this.data.db
             .prepare("DELETE FROM prayer_reactions WHERE prayer_id=? AND member_id=?")
             .run(id, memberId);
-        if (!removed.changes)
+        if (removed.changes) this.inbox.prayerSupportCancelled(id, memberId);
+        if (!removed.changes) {
             this.data.db.prepare("INSERT INTO prayer_reactions(prayer_id,member_id) VALUES(?,?)").run(id, memberId);
+            this.inbox.prayerSupport(id, memberId);
+        }
         return { prayed: !removed.changes };
     }
     report(memberId: number, body: unknown) {
@@ -278,6 +289,7 @@ export class CommunityService {
         if (!this.data.db.prepare(`SELECT id FROM ${table} WHERE id=? AND hidden=0`).get(postId as number))
             throw new NotFoundException();
         const reason = text(body, "reason", 500);
+        if (/^기타\s*:?\s*$/.test(reason)) throw new BadRequestException("기타 신고 내용을 입력해 주세요");
         const id = Number(
             this.data.db
                 .prepare("INSERT INTO reports(reporter_id,kind,post_id,reason,created_at) VALUES(?,?,?,?,?)")

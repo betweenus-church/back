@@ -25,6 +25,9 @@ export class CommunityController {
     @Get("community") snapshot(@Req() req: ApiRequest) {
         return this.community.snapshot(req.member!.id);
     }
+    @Get("notices/:id") notice(@Param("id", ParseIntPipe) id: number) {
+        return this.community.noticeById(id);
+    }
     @Post("words") addWord(@Req() req: ApiRequest, @Body() body: unknown) {
         return this.community.addWord(req.member!.id, body);
     }

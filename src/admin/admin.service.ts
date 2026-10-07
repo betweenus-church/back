@@ -1,7 +1,11 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, StreamableFile } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import { passwordHash } from "../auth/auth.service";
 import { DatabaseService } from "../database/database.service";
+import { InboxService } from "../inbox/inbox.service";
+import { PushService } from "../push/push.service";
 
 type Row = Record<string, string | number | null>;
 function stringField(body: unknown, key: string, max: number) {
@@ -13,7 +17,8 @@ function formatPhone(phone: string) { return phone.replace(/^(\d{3})(\d{3,4})(\d
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly data: DatabaseService) {}
+  private readonly logger = new Logger(AdminService.name);
+  constructor(private readonly data: DatabaseService, private readonly inbox: InboxService, private readonly push: PushService) {}
   dashboard() {
     const db = this.data.db;
     return {
@@ -69,6 +74,7 @@ export class AdminService {
     try {
       db.prepare("UPDATE members SET password_hash=?,must_change_password=1,updated_at=? WHERE id=?").run(passwordHash(password), new Date().toISOString(), id);
       db.prepare("DELETE FROM sessions WHERE member_id=?").run(id);
+      db.prepare("DELETE FROM push_subscriptions WHERE member_id=?").run(id);
       db.exec("COMMIT");
     } catch (error) { db.exec("ROLLBACK"); throw error; }
     return { password };
@@ -81,7 +87,22 @@ export class AdminService {
         WHEN 'comment' THEN (SELECT text FROM photo_comments WHERE id=r.post_id) END AS excerpt,
       m.name AS reporter FROM reports r JOIN members m ON m.id=r.reporter_id ORDER BY r.id DESC`).all();
   }
-  resolveReport(id: number, body: unknown) {
+  reportImage(id: number) {
+    const row = this.data.db.prepare(`SELECT p.image_file AS imageFile FROM reports r
+      LEFT JOIN photo_comments c ON r.kind='comment' AND c.id=r.post_id
+      JOIN photos p ON p.id=CASE WHEN r.kind='photo' THEN r.post_id ELSE c.photo_id END
+      WHERE r.id=? AND r.kind IN ('photo','comment')`).get(id) as { imageFile: string } | undefined;
+    if (!row || basename(row.imageFile) !== row.imageFile) throw new NotFoundException("Reported photo not found");
+    let bytes: Buffer;
+    try { bytes = readFileSync(resolve(process.env.UPLOAD_DIR || "./data/uploads", row.imageFile)); }
+    catch { throw new NotFoundException("Reported photo not found"); }
+    const extension = row.imageFile.split(".").pop();
+    return new StreamableFile(bytes, {
+      type: extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : "image/jpeg",
+      disposition: "inline",
+    });
+  }
+  async resolveReport(id: number, body: unknown) {
     const action = (body as Record<string, unknown>)?.action;
     if (!["dismiss", "hide", "delete"].includes(String(action))) throw new BadRequestException("Invalid action");
     const resolution = stringField(body, "resolution", 500);
@@ -90,12 +111,21 @@ export class AdminService {
     if (!row || row.status !== "pending") throw new NotFoundException("Pending report not found");
     const table = { photo: "photos", word: "word_posts", prayer: "prayers", comment: "photo_comments" }[row.kind];
     if (!table) throw new BadRequestException("Unknown report kind");
+    const owner = db.prepare(`SELECT member_id,hidden FROM ${table} WHERE id=?`).get(row.post_id) as { member_id: number; hidden: number } | undefined;
+    let notification: { title: string; body: string; url: string } | null = null;
     db.exec("BEGIN");
     try {
       if (action !== "dismiss") db.prepare(`UPDATE ${table} SET hidden=1 WHERE id=?`).run(row.post_id);
       db.prepare("UPDATE reports SET status='resolved',action=?,resolution=?,handled_at=? WHERE id=?").run(action as string, resolution, new Date().toISOString(), id);
+      if (action === "delete" && owner && !owner.hidden) {
+        notification = this.inbox.moderationRemoved(owner.member_id, row.kind as "photo" | "word" | "prayer" | "comment", resolution, id);
+      }
       db.exec("COMMIT");
     } catch (error) { db.exec("ROLLBACK"); throw error; }
+    if (notification && owner) {
+      try { await this.push.sendToMember(owner.member_id, notification.title, notification.body, notification.url); }
+      catch (error) { this.logger.warn(`Moderation push failed after report ${id}: ${String(error)}`); }
+    }
     return { id, status: "resolved", action };
   }
   settings() {
