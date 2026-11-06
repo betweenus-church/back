@@ -1,6 +1,6 @@
 # 사이 NestJS API
 
-Next.js 프론트엔드와 분리된 NestJS 서버입니다. Node.js 24 이상, TypeScript 6, pnpm을 사용합니다. TypeScript의 `NodeNext` 모듈 해석으로 Node.js 실행 환경을 검사합니다. 운영 DB와 테스트 DB는 서버 PC의 서로 다른 폴더에 저장합니다.
+Next.js 프론트엔드와 분리된 NestJS 서버입니다. Node.js 24 이상과 TypeScript 6을 사용합니다. 이 복사본은 npm으로 의존성을 설치할 수 있습니다. TypeScript의 `NodeNext` 모듈 해석으로 Node.js 실행 환경을 검사합니다. 운영 DB와 테스트 DB는 서버 PC의 서로 다른 폴더에 저장합니다.
 
 ## NestJS 코드 구조
 
@@ -17,13 +17,13 @@ Next.js 프론트엔드와 분리된 NestJS 서버입니다. Node.js 24 이상, 
 
 ## 로컬 실행
 
-1. `pnpm install`
+1. 이 back 폴더에서 `npm install`을 실행합니다. NestJS 공통 패키지는 `npm install @nestjs/common` 명령을 그대로 사용할 수 있습니다.
 2. 운영은 `.env.example` → `.env`, 테스트는 `.env.test.example` → `.env.test`를 사용합니다. 이 PC에는 두 로컬 설정이 생성되어 있습니다. 두 파일의 운영자 비밀번호는 별도로 관리하고 저장소에 넣지 마세요. 주 운영자 비밀번호 최소 길이는 12자입니다.
 3. 개발·검증은 `pnpm build` 후 테스트 API `pnpm start:test`(4100번)를 실행합니다.
 4. 프론트엔드 디렉터리에서 `pnpm dev`(3001번)를 실행합니다.
 5. `http://127.0.0.1:3001`로 접속합니다. 운영 API `pnpm start`(4000번)와 운영 웹 `pnpm start`(3000번)는 사용자가 명시적으로 요청한 경우에만 실행합니다.
 
-이 PC의 PowerShell에서 `npm` 명령은 손상된 전역 `npm.ps1`을 선택해 실패할 수 있습니다. `npm.cmd run start:test` 또는 `pnpm start:test`를 사용하세요. 테스트 API는 4100번 포트에 한 번만 실행합니다.
+일반 Windows PowerShell과 VSCode 터미널에서 `npm install @nestjs/common` 설치를 확인했습니다. 타입 검사는 `npm run typecheck`로 실행합니다. 의존성은 npm이 생성한 package-lock.json으로 관리합니다. Node.js 설치 전에 열어 둔 터미널은 새로 열어 PATH 변경을 반영하세요. 테스트 API는 4100번 포트에 한 번만 실행합니다.
 
 | 모드 | 설정 파일 | API 포트 | DB | 사진 |
 | --- | --- | --- | --- | --- |

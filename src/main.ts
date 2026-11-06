@@ -6,10 +6,14 @@ async function main() {
     const app = await NestFactory.create(AppModule, { bodyParser: true });
     const origin = process.env.FRONTEND_ORIGIN || "http://127.0.0.1:3000";
     const allowedOrigins = new Set([origin]);
-    const localUrl = new URL(origin);
-    if (localUrl.hostname === "127.0.0.1" || localUrl.hostname === "localhost") {
-        localUrl.hostname = localUrl.hostname === "127.0.0.1" ? "localhost" : "127.0.0.1";
-        allowedOrigins.add(localUrl.origin);
+    for (const configuredOrigin of [origin, process.env.ADMIN_ORIGIN]) {
+        if (!configuredOrigin) continue;
+        allowedOrigins.add(configuredOrigin);
+        const localUrl = new URL(configuredOrigin);
+        if (localUrl.hostname === "127.0.0.1" || localUrl.hostname === "localhost") {
+            localUrl.hostname = localUrl.hostname === "127.0.0.1" ? "localhost" : "127.0.0.1";
+            allowedOrigins.add(localUrl.origin);
+        }
     }
     app.use(
         (

@@ -6,3 +6,11 @@ data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+
+.env*
+!.env.example
+!.env.test.example
+.test-data/
+dist-production/
+uploads/
+*.log

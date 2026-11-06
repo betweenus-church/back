@@ -14,7 +14,7 @@
     "test": "node --env-file=.env.test --test test/*.test.mjs"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.0",
+    "@nestjs/common": "^11.2.8",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
     "reflect-metadata": "^0.2.2",
@@ -26,5 +26,8 @@
     "@types/node": "^24.0.0",
     "@types/web-push": "^3.6.4",
     "typescript": "^6.0.3"
+  },
+  "allowScripts": {
+    "sharp@0.34.5": true
   }
 }

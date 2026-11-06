@@ -25,7 +25,7 @@ test("membership, moderation and photo permissions survive server storage", asyn
   const base = `http://127.0.0.1:${port}/api`;
   const child = spawn(process.execPath, ["dist/main.js"], {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: String(port), DATABASE_PATH: join(temp, "test.sqlite"), UPLOAD_DIR: join(temp, "uploads"), ADMIN_PASSWORD: "TestPass12!x", CHURCH_NAME: "테스트교회", FRONTEND_ORIGIN: origin },
+    env: { ...process.env, PORT: String(port), DATABASE_PATH: join(temp, "test.sqlite"), UPLOAD_DIR: join(temp, "uploads"), ADMIN_PASSWORD: "TestPass12!x", CHURCH_NAME: "테스트교회", FRONTEND_ORIGIN: origin, ADMIN_ORIGIN: "http://127.0.0.1:3002" },
     stdio: ["ignore", "ignore", "pipe"],
   });
   let childStderr = "";
@@ -47,6 +47,8 @@ test("membership, moderation and photo permissions survive server storage", asyn
     assert.equal(ready, true, childStderr);
     const localLogin = await fetch(base + "/auth/admin/login", { method: "POST", headers: { Origin: "http://localhost:3001", "Content-Type": "application/json" }, body: JSON.stringify({ password: "wrong" }) });
     assert.equal(localLogin.status, 401);
+    const adminOriginLogin = await fetch(base + "/auth/admin/login", { method: "POST", headers: { Origin: "http://127.0.0.1:3002", "Content-Type": "application/json" }, body: JSON.stringify({ password: "wrong" }) });
+    assert.equal(adminOriginLogin.status, 401);
     const foreignLogin = await fetch(base + "/auth/admin/login", { method: "POST", headers: { Origin: "http://example.com", "Content-Type": "application/json" }, body: JSON.stringify({ password: "wrong" }) });
     assert.equal(foreignLogin.status, 403);
     assert.equal((await call("/admin/dashboard")).response.status, 401);
