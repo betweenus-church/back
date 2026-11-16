@@ -7,5 +7,9 @@ import { PushModule } from "../push/push.module";
 import { AdminController } from "./admin.controller";
 import { AdminService } from "./admin.service";
 
-@Module({ imports: [AuthModule, DatabaseModule, DailyWordModule, InboxModule, PushModule], controllers: [AdminController], providers: [AdminService] })
+@Module({
+  imports: [AuthModule, DatabaseModule, DailyWordModule, InboxModule, PushModule],
+  controllers: [AdminController],
+  providers: [AdminService],
+})
 export class AdminModule {}

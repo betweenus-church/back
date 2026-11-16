@@ -13,7 +13,6 @@
 
 PC 재부팅 후 자동 실행은 별도로 등록하지 않았습니다. 서버를 다시 실행할 때도 D: 드라이브의 이전 프로젝트가 아닌 바탕화면의 두 폴더를 사용합니다. 운영 실행 로그는 .server 폴더에 저장합니다.
 
-
 Next.js 프론트엔드와 분리된 NestJS 서버입니다. Node.js 24 이상과 TypeScript 6을 사용합니다. 이 프로젝트는 npm으로 의존성을 설치할 수 있습니다. TypeScript의 `NodeNext` 모듈 해석으로 Node.js 실행 환경을 검사합니다. 운영 DB와 테스트 DB는 서버 PC의 서로 다른 폴더에 저장합니다.
 
 ## NestJS 코드 구조
@@ -39,10 +38,10 @@ Next.js 프론트엔드와 분리된 NestJS 서버입니다. Node.js 24 이상�
 
 일반 Windows PowerShell과 VSCode 터미널에서 `npm install @nestjs/common` 설치를 확인했습니다. 타입 검사는 `npm run typecheck`로 실행합니다. 의존성은 npm이 생성한 package-lock.json으로 관리합니다. Node.js 설치 전에 열어 둔 터미널은 새로 열어 PATH 변경을 반영하세요. 테스트 API는 4100번 포트에 한 번만 실행합니다.
 
-| 모드 | 설정 파일 | API 포트 | DB | 사진 |
-| --- | --- | --- | --- | --- |
-| 운영 | `.env` | 4000 | `E:\실 서버\sai.sqlite` | `E:\실 서버\uploads` |
-| 테스트 | `.env.test` | 4100 | `E:\테스트 서버\sai.sqlite` | `E:\테스트 서버\uploads` |
+| 모드   | 설정 파일   | API 포트 | DB                          | 사진                     |
+| ------ | ----------- | -------- | --------------------------- | ------------------------ |
+| 운영   | `.env`      | 4000     | `E:\실 서버\sai.sqlite`     | `E:\실 서버\uploads`     |
+| 테스트 | `.env.test` | 4100     | `E:\테스트 서버\sai.sqlite` | `E:\테스트 서버\uploads` |
 
 기존 `E:\sai.sqlite`는 SQLite 백업 기능으로 운영 폴더에 복사했습니다. 원본 `E:\sai.sqlite`와 `E:\sai-uploads`는 복구용으로 그대로 남겨 두었습니다. 운영 데이터가 테스트 DB로 자동 복제되지는 않습니다. 교회명은 현재 가입 화면의 `광주동산교회`를 임시로 적용했습니다. 실제 교회명이 다르면 각 설정 파일의 `CHURCH_NAME`을 바꾸고 해당 서버를 재시작하세요. SQLite WAL 모드에서는 각 DB 옆에 `-wal`·`-shm` 파일이 생길 수 있습니다.
 
@@ -52,18 +51,18 @@ Next.js 프론트엔드와 분리된 NestJS 서버입니다. Node.js 24 이상�
 
 기본 경로 `/api`. 프론트엔드는 같은 출처의 `/api`를 Next.js rewrite를 통해 사용합니다.
 
-| 영역 | 주요 경로 | 권한 |
-| --- | --- | --- |
-| 가입·세션 | `POST /auth/signup`, `POST /auth/login`, `GET /auth/me`, `POST /auth/password`, `POST /auth/change-password`, `POST /auth/logout` | 회원 세션·전화번호/비밀번호 |
-| 운영자 | `POST /auth/admin/login`, `GET /auth/admin/me`, `POST /auth/admin/logout` | 별도 운영자 세션 |
-| 공동체 | `GET /community`, `/words`, `/photos`, `/prayers`, `/reports` 하위 경로 | 승인 회원 |
-| 오늘의 말씀 | `GET /daily-word?date=YYYY-MM-DD` | 공개 읽기 |
-| 운영 | `/admin/dashboard`, `/admin/approvals`, `/admin/members`, `/admin/reports` | 운영자 |
-| 설정 | `/admin/settings`, `/admin/accounts`, `/admin/notices`, `/admin/daily-words` | 운영자; 계정 추가·삭제는 주 운영자만 |
-| 교회 소식 | `GET /news`, `GET /news/:id`, `GET /news/:id/cover` | 승인 회원 |
-| 교회 소식 관리 | `GET/POST /admin/news`, `GET/PATCH/DELETE /admin/news/:id`, `GET /admin/news/:id/cover` | 운영자 |
-| 말씀 푸시 | `GET /push/config`, `POST /push/status`, `POST/DELETE /push/subscriptions` | 승인 회원 |
-| 푸시 운영 설정 | `GET/PATCH /admin/push/settings` | 운영자 |
+| 영역           | 주요 경로                                                                                                                         | 권한                                 |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| 가입·세션      | `POST /auth/signup`, `POST /auth/login`, `GET /auth/me`, `POST /auth/password`, `POST /auth/change-password`, `POST /auth/logout` | 회원 세션·전화번호/비밀번호          |
+| 운영자         | `POST /auth/admin/login`, `GET /auth/admin/me`, `POST /auth/admin/logout`                                                         | 별도 운영자 세션                     |
+| 공동체         | `GET /community`, `/words`, `/photos`, `/prayers`, `/reports` 하위 경로                                                           | 승인 회원                            |
+| 오늘의 말씀    | `GET /daily-word?date=YYYY-MM-DD`                                                                                                 | 공개 읽기                            |
+| 운영           | `/admin/dashboard`, `/admin/approvals`, `/admin/members`, `/admin/reports`                                                        | 운영자                               |
+| 설정           | `/admin/settings`, `/admin/accounts`, `/admin/notices`, `/admin/daily-words`                                                      | 운영자; 계정 추가·삭제는 주 운영자만 |
+| 교회 소식      | `GET /news`, `GET /news/:id`, `GET /news/:id/cover`                                                                               | 승인 회원                            |
+| 교회 소식 관리 | `GET/POST /admin/news`, `GET/PATCH/DELETE /admin/news/:id`, `GET /admin/news/:id/cover`                                           | 운영자                               |
+| 말씀 푸시      | `GET /push/config`, `POST /push/status`, `POST/DELETE /push/subscriptions`                                                        | 승인 회원                            |
+| 푸시 운영 설정 | `GET/PATCH /admin/push/settings`                                                                                                  | 운영자                               |
 
 ## 말씀 푸시 알림
 

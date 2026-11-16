@@ -4,5 +4,10 @@ import { DatabaseModule } from "../database/database.module";
 import { InboxController } from "./inbox.controller";
 import { InboxService } from "./inbox.service";
 
-@Module({ imports: [AuthModule, DatabaseModule], controllers: [InboxController], providers: [InboxService], exports: [InboxService] })
+@Module({
+  imports: [AuthModule, DatabaseModule],
+  controllers: [InboxController],
+  providers: [InboxService],
+  exports: [InboxService],
+})
 export class InboxModule {}

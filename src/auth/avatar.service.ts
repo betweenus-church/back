@@ -9,7 +9,9 @@ import { MemberRow } from "./auth.types";
 @Injectable()
 export class AvatarService {
   private readonly directory = resolve(process.env.UPLOAD_DIR || "./data/uploads", "avatars");
-  constructor(private readonly data: DatabaseService) { mkdirSync(this.directory, { recursive: true }); }
+  constructor(private readonly data: DatabaseService) {
+    mkdirSync(this.directory, { recursive: true });
+  }
 
   private member(id: number) {
     return this.data.db.prepare("SELECT * FROM members WHERE id=?").get(id) as MemberRow;
@@ -17,8 +19,11 @@ export class AvatarService {
 
   private removeFile(filename: string | null) {
     if (!filename) return;
-    try { unlinkSync(resolve(this.directory, filename)); }
-    catch { /* Keep the committed profile state if an old file was already removed. */ }
+    try {
+      unlinkSync(resolve(this.directory, filename));
+    } catch {
+      /* Keep the committed profile state if an old file was already removed. */
+    }
   }
 
   image(member: MemberRow) {
@@ -40,16 +45,21 @@ export class AvatarService {
     const filename = `${randomUUID()}.webp`;
     writeFileSync(resolve(this.directory, filename), image.buffer, { flag: "wx" });
     try {
-      this.data.db.prepare("UPDATE members SET avatar_file=?,updated_at=? WHERE id=?")
+      this.data.db
+        .prepare("UPDATE members SET avatar_file=?,updated_at=? WHERE id=?")
         .run(filename, new Date().toISOString(), member.id);
-    } catch (error) { this.removeFile(filename); throw error; }
+    } catch (error) {
+      this.removeFile(filename);
+      throw error;
+    }
     this.removeFile(member.avatar_file);
     return this.member(member.id);
   }
 
   remove(member: MemberRow) {
     if (member.avatar_file) {
-      this.data.db.prepare("UPDATE members SET avatar_file=NULL,updated_at=? WHERE id=?")
+      this.data.db
+        .prepare("UPDATE members SET avatar_file=NULL,updated_at=? WHERE id=?")
         .run(new Date().toISOString(), member.id);
       this.removeFile(member.avatar_file);
     }

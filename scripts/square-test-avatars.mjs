@@ -35,16 +35,25 @@ try {
     for (const target of targets) {
       const newName = `${randomUUID()}.webp`;
       const destination = join(avatarDir, newName);
-      const buffer = await sharp(target.source).rotate().resize(512, 512, { fit: "cover", position: "centre" })
-        .webp({ quality: 78, effort: 4 }).toBuffer();
+      const buffer = await sharp(target.source)
+        .rotate()
+        .resize(512, 512, { fit: "cover", position: "centre" })
+        .webp({ quality: 78, effort: 4 })
+        .toBuffer();
       writeFileSync(destination, buffer, { flag: "wx" });
       try {
-        const result = db.prepare("UPDATE members SET avatar_file=?,updated_at=? WHERE id=? AND avatar_file=?")
+        const result = db
+          .prepare("UPDATE members SET avatar_file=?,updated_at=? WHERE id=? AND avatar_file=?")
           .run(newName, new Date().toISOString(), target.id, target.filename);
         if (result.changes !== 1) throw new Error("Avatar changed during migration");
-      } catch (error) { unlinkSync(destination); throw error; }
+      } catch (error) {
+        unlinkSync(destination);
+        throw error;
+      }
       unlinkSync(target.source);
     }
     console.log(`Converted ${targets.length} avatar(s) to 512x512; backup: ${backupDir}`);
   }
-} finally { db.close(); }
+} finally {
+  db.close();
+}

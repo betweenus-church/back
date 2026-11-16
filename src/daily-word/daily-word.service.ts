@@ -4,8 +4,14 @@ import { seoulDate, validDate } from "./date";
 import { officialReadingUrl, plannedWord } from "./plan";
 
 type DailyWordRow = {
-  date: string; reference: string; verse: string; question: string; reading_url: string | null;
-  scripture_text: string | null; scripture_version: string | null; scripture_attribution: string | null;
+  date: string;
+  reference: string;
+  verse: string;
+  question: string;
+  reading_url: string | null;
+  scripture_text: string | null;
+  scripture_version: string | null;
+  scripture_attribution: string | null;
 };
 
 function content(body: unknown, key: string, max: number) {
@@ -21,21 +27,34 @@ export class DailyWordService {
   constructor(private readonly data: DatabaseService) {}
 
   private format(row: DailyWordRow) {
-    return { date: row.date, reference: row.reference, verse: row.verse, question: row.question,
-      scriptureText: row.scripture_text, scriptureVersion: row.scripture_version,
+    return {
+      date: row.date,
+      reference: row.reference,
+      verse: row.verse,
+      question: row.question,
+      scriptureText: row.scripture_text,
+      scriptureVersion: row.scripture_version,
       scriptureAttribution: row.scripture_attribution,
-      readingUrl: row.reading_url ?? officialReadingUrl(row.reference), source: "custom" as const };
+      readingUrl: row.reading_url ?? officialReadingUrl(row.reference),
+      source: "custom" as const,
+    };
   }
 
   get(date?: string) {
     const target = date === undefined ? seoulDate() : validDate(date);
-    const row = this.data.db.prepare("SELECT date,reference,verse,question,reading_url,scripture_text,scripture_version,scripture_attribution FROM daily_words WHERE date=?")
+    const row = this.data.db
+      .prepare(
+        "SELECT date,reference,verse,question,reading_url,scripture_text,scripture_version,scripture_attribution FROM daily_words WHERE date=?",
+      )
       .get(target) as DailyWordRow | undefined;
     return row ? this.format(row) : plannedWord(target);
   }
 
   list() {
-    const rows = this.data.db.prepare("SELECT date,reference,verse,question,reading_url,scripture_text,scripture_version,scripture_attribution FROM daily_words ORDER BY date DESC")
+    const rows = this.data.db
+      .prepare(
+        "SELECT date,reference,verse,question,reading_url,scripture_text,scripture_version,scripture_attribution FROM daily_words ORDER BY date DESC",
+      )
       .all() as DailyWordRow[];
     return rows.map((row) => this.format(row));
   }
@@ -56,12 +75,17 @@ export class DailyWordService {
         const url = new URL(rawUrl);
         if (url.protocol !== "https:" || url.hostname !== "bible.bskorea.or.kr") throw new Error("Invalid URL");
         readingUrl = url.toString();
-      } catch { throw new BadRequestException("readingUrl must use the official Bible reader"); }
+      } catch {
+        throw new BadRequestException("readingUrl must use the official Bible reader");
+      }
     }
-    this.data.db.prepare(`INSERT INTO daily_words(date,reference,verse,question,reading_url,scripture_text,scripture_version,scripture_attribution) VALUES(?,?,?,?,?,?,?,?)
+    this.data.db
+      .prepare(
+        `INSERT INTO daily_words(date,reference,verse,question,reading_url,scripture_text,scripture_version,scripture_attribution) VALUES(?,?,?,?,?,?,?,?)
       ON CONFLICT(date) DO UPDATE SET reference=excluded.reference,verse=excluded.verse,
       question=excluded.question,reading_url=excluded.reading_url,scripture_text=excluded.scripture_text,
-      scripture_version=excluded.scripture_version,scripture_attribution=excluded.scripture_attribution`)
+      scripture_version=excluded.scripture_version,scripture_attribution=excluded.scripture_attribution`,
+      )
       .run(date, reference, verse, question, readingUrl, scriptureText, scriptureVersion, scriptureAttribution);
     return this.get(date);
   }

@@ -69,7 +69,7 @@ export class DatabaseService implements OnModuleDestroy {
         kind TEXT NOT NULL, post_id INTEGER NOT NULL, reason TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending', action TEXT, resolution TEXT,
         created_at TEXT NOT NULL, handled_at TEXT
-      ) STRzICT;
+      ) STRICT;
       CREATE TABLE notices (
         id INTEGER PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL,
         status TEXT NOT NULL, pinned INTEGER NOT NULL DEFAULT 0,
@@ -253,8 +253,7 @@ export class DatabaseService implements OnModuleDestroy {
               Number(
                 (
                   this.db.prepare("SELECT seq FROM sqlite_sequence WHERE name=?").get(table) as
-                    | { seq: number }
-                    | undefined
+                    { seq: number } | undefined
                 )?.seq || 0,
               ),
             );

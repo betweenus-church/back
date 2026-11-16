@@ -25,34 +25,76 @@ test("membership, moderation and photo permissions survive server storage", asyn
   const base = `http://127.0.0.1:${port}/api`;
   const child = spawn(process.execPath, ["dist/main.js"], {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: String(port), DATABASE_PATH: join(temp, "test.sqlite"), UPLOAD_DIR: join(temp, "uploads"), ADMIN_PASSWORD: "TestPass12!x", CHURCH_NAME: "테스트교회", FRONTEND_ORIGIN: origin, ADMIN_ORIGIN: "http://127.0.0.1:3002" },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      DATABASE_PATH: join(temp, "test.sqlite"),
+      UPLOAD_DIR: join(temp, "uploads"),
+      ADMIN_PASSWORD: "TestPass12!x",
+      CHURCH_NAME: "테스트교회",
+      FRONTEND_ORIGIN: origin,
+      ADMIN_ORIGIN: "http://127.0.0.1:3002",
+    },
     stdio: ["ignore", "ignore", "pipe"],
   });
   let childStderr = "";
-  child.stderr.on("data", (chunk) => { childStderr = (childStderr + chunk.toString()).slice(-2000); });
+  child.stderr.on("data", (chunk) => {
+    childStderr = (childStderr + chunk.toString()).slice(-2000);
+  });
   let memberCookie = "";
   let adminCookie = "";
   async function call(path, method = "GET", body, cookie = "") {
     const headers = { ...(method === "GET" ? {} : { Origin: origin }), ...(cookie ? { Cookie: cookie } : {}) };
     if (body && !(body instanceof FormData)) headers["Content-Type"] = "application/json";
-    const response = await fetch(base + path, { method, headers, body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined });
-    return { response, data: await response.json().catch(() => null), cookie: response.headers.get("set-cookie")?.split(";")[0] ?? "" };
+    const response = await fetch(base + path, {
+      method,
+      headers,
+      body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
+    });
+    return {
+      response,
+      data: await response.json().catch(() => null),
+      cookie: response.headers.get("set-cookie")?.split(";")[0] ?? "",
+    };
   }
   try {
     let ready = false;
     for (let i = 0; i < 150; i++) {
       if (child.exitCode !== null) throw new Error(`API exited before startup: ${childStderr}`);
-      try { await fetch(base + "/auth/me"); ready = true; break; } catch { await new Promise((resolve) => setTimeout(resolve, 100)); }
+      try {
+        await fetch(base + "/auth/me");
+        ready = true;
+        break;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
     }
     assert.equal(ready, true, childStderr);
-    const localLogin = await fetch(base + "/auth/admin/login", { method: "POST", headers: { Origin: "http://localhost:3001", "Content-Type": "application/json" }, body: JSON.stringify({ password: "wrong" }) });
+    const localLogin = await fetch(base + "/auth/admin/login", {
+      method: "POST",
+      headers: { Origin: "http://localhost:3001", "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "wrong" }),
+    });
     assert.equal(localLogin.status, 401);
-    const adminOriginLogin = await fetch(base + "/auth/admin/login", { method: "POST", headers: { Origin: "http://127.0.0.1:3002", "Content-Type": "application/json" }, body: JSON.stringify({ password: "wrong" }) });
+    const adminOriginLogin = await fetch(base + "/auth/admin/login", {
+      method: "POST",
+      headers: { Origin: "http://127.0.0.1:3002", "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "wrong" }),
+    });
     assert.equal(adminOriginLogin.status, 401);
-    const foreignLogin = await fetch(base + "/auth/admin/login", { method: "POST", headers: { Origin: "http://example.com", "Content-Type": "application/json" }, body: JSON.stringify({ password: "wrong" }) });
+    const foreignLogin = await fetch(base + "/auth/admin/login", {
+      method: "POST",
+      headers: { Origin: "http://example.com", "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "wrong" }),
+    });
     assert.equal(foreignLogin.status, 403);
     assert.equal((await call("/admin/dashboard")).response.status, 401);
-    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date());
     const datePart = (type) => parts.find((part) => part.type === type).value;
     const today = `${datePart("year")}-${datePart("month")}-${datePart("day")}`;
     const daily = await call("/daily-word");
@@ -79,17 +121,45 @@ test("membership, moderation and photo permissions survive server storage", asyn
       assert.ok(data.scriptureText?.trim(), `${date} scripture text`);
       assert.equal(data.scriptureVersion, "개역한글판");
     }
-    assert.equal((await call("/daily-word?date=2026-10-14")).data.scriptureText,
-      "항상 기뻐하라 쉬지 말고 기도하라 범사에 감사하라 이는 그리스도 예수 안에서 너희를 향하신 하나님의 뜻이니라");
-    assert.equal((await call("/daily-word?date=2026-10-03")).data.readingUrl, "https://bible.bskorea.or.kr/bible/NKRV/ROM.12");
+    assert.equal(
+      (await call("/daily-word?date=2026-10-14")).data.scriptureText,
+      "항상 기뻐하라 쉬지 말고 기도하라 범사에 감사하라 이는 그리스도 예수 안에서 너희를 향하신 하나님의 뜻이니라",
+    );
+    assert.equal(
+      (await call("/daily-word?date=2026-10-03")).data.readingUrl,
+      "https://bible.bskorea.or.kr/bible/NKRV/ROM.12",
+    );
     assert.equal((await call("/daily-word?date=2026-02-30")).response.status, 400);
     assert.equal((await call("/daily-word?date=2026-01-01")).response.status, 200);
     assert.equal((await call("/admin/daily-words")).response.status, 401);
     const memberPassword = "MemberPass12";
-    assert.equal((await call("/auth/signup", "POST", { name: "테스트", phone: "010-5555-4321", church: "테스트교회", consent: true, password: "MemberPass1" })).response.status, 400);
-    const signup = await call("/auth/signup", "POST", { name: "테스트", phone: "010-5555-4321", church: "테스트교회", consent: true, password: memberPassword });
+    assert.equal(
+      (
+        await call("/auth/signup", "POST", {
+          name: "테스트",
+          phone: "010-5555-4321",
+          church: "테스트교회",
+          consent: true,
+          password: "MemberPass1",
+        })
+      ).response.status,
+      400,
+    );
+    const signup = await call("/auth/signup", "POST", {
+      name: "테스트",
+      phone: "010-5555-4321",
+      church: "테스트교회",
+      consent: true,
+      password: memberPassword,
+    });
     assert.equal(signup.response.status, 201);
-    const duplicate = await call("/auth/signup", "POST", { name: "다른 이름", phone: "010-5555-4321", church: "테스트교회", consent: true, password: memberPassword });
+    const duplicate = await call("/auth/signup", "POST", {
+      name: "다른 이름",
+      phone: "010-5555-4321",
+      church: "테스트교회",
+      consent: true,
+      password: memberPassword,
+    });
     assert.equal(duplicate.response.status, 409);
     assert.match(duplicate.data.message, /이미 가입/);
     memberCookie = signup.cookie;
@@ -98,47 +168,124 @@ test("membership, moderation and photo permissions survive server storage", asyn
     legacyDb.prepare("UPDATE members SET password_hash=NULL WHERE id=?").run(signup.data.id);
     legacyDb.close();
     assert.equal((await call("/auth/me", "GET", undefined, memberCookie)).data.hasPassword, false);
-    assert.equal((await call("/auth/password", "POST", { password: "MemberPass1" }, memberCookie)).response.status, 400);
-    assert.equal((await call("/auth/password", "POST", { password: memberPassword }, memberCookie)).response.status, 201);
+    assert.equal(
+      (await call("/auth/password", "POST", { password: "MemberPass1" }, memberCookie)).response.status,
+      400,
+    );
+    assert.equal(
+      (await call("/auth/password", "POST", { password: memberPassword }, memberCookie)).response.status,
+      201,
+    );
     assert.equal((await call("/auth/logout", "POST", undefined, memberCookie)).response.status, 201);
     assert.equal((await call("/auth/me", "GET", undefined, memberCookie)).response.status, 401);
-    assert.equal((await call("/auth/login", "POST", { phone: "010-5555-4321", password: "incorrect-passphrase" })).response.status, 401);
+    assert.equal(
+      (await call("/auth/login", "POST", { phone: "010-5555-4321", password: "incorrect-passphrase" })).response.status,
+      401,
+    );
     const memberLogin = await call("/auth/login", "POST", { phone: "010-5555-4321", password: memberPassword });
     assert.equal(memberLogin.response.status, 201);
     assert.equal(memberLogin.data.status, "pending");
     memberCookie = memberLogin.cookie;
     assert.equal((await call("/community", "GET", undefined, memberCookie)).response.status, 403);
     const pendingAvatar = new FormData();
-    pendingAvatar.append("image", new Blob([await sharp({ create: { width: 16, height: 16, channels: 3, background: "red" } }).png().toBuffer()], { type: "image/png" }), "avatar.png");
+    pendingAvatar.append(
+      "image",
+      new Blob(
+        [
+          await sharp({ create: { width: 16, height: 16, channels: 3, background: "red" } })
+            .png()
+            .toBuffer(),
+        ],
+        { type: "image/png" },
+      ),
+      "avatar.png",
+    );
     assert.equal((await call("/auth/me/avatar", "POST", pendingAvatar, memberCookie)).response.status, 403);
     const admin = await call("/auth/admin/login", "POST", { password: "TestPass12!x" });
     assert.equal(admin.response.status, 201);
     adminCookie = admin.cookie;
     const anotherDate = today === "2026-01-01" ? "2026-01-02" : "2026-01-01";
-    const dailyBody = { reference: "요한복음 15:12", verse: "사랑을 나눠요.",
+    const dailyBody = {
+      reference: "요한복음 15:12",
+      verse: "사랑을 나눠요.",
       scriptureText: "내 계명은 곧 내가 너희를 사랑한 것 같이 너희도 서로 사랑하라 하는 이것이니라",
-      scriptureVersion: "개역한글판", scriptureAttribution: "대한성서공회",
-      question: "오늘 누구를 사랑으로 대할까요?", readingUrl: null };
-    assert.equal((await call(`/admin/daily-words/${anotherDate}`, "PUT", { ...dailyBody, scriptureText: "" }, adminCookie)).response.status, 400);
-    assert.equal((await call(`/admin/daily-words/${anotherDate}`, "PUT", { ...dailyBody, scriptureVersion: "" }, adminCookie)).response.status, 400);
-    assert.equal((await call(`/admin/daily-words/${anotherDate}`, "PUT", { ...dailyBody, readingUrl: "javascript:alert(1)" }, adminCookie)).response.status, 400);
-    assert.equal((await call(`/admin/daily-words/${anotherDate}`, "PUT", { ...dailyBody, readingUrl: "https://example.com/bible" }, adminCookie)).response.status, 400);
+      scriptureVersion: "개역한글판",
+      scriptureAttribution: "대한성서공회",
+      question: "오늘 누구를 사랑으로 대할까요?",
+      readingUrl: null,
+    };
+    assert.equal(
+      (await call(`/admin/daily-words/${anotherDate}`, "PUT", { ...dailyBody, scriptureText: "" }, adminCookie))
+        .response.status,
+      400,
+    );
+    assert.equal(
+      (await call(`/admin/daily-words/${anotherDate}`, "PUT", { ...dailyBody, scriptureVersion: "" }, adminCookie))
+        .response.status,
+      400,
+    );
+    assert.equal(
+      (
+        await call(
+          `/admin/daily-words/${anotherDate}`,
+          "PUT",
+          { ...dailyBody, readingUrl: "javascript:alert(1)" },
+          adminCookie,
+        )
+      ).response.status,
+      400,
+    );
+    assert.equal(
+      (
+        await call(
+          `/admin/daily-words/${anotherDate}`,
+          "PUT",
+          { ...dailyBody, readingUrl: "https://example.com/bible" },
+          adminCookie,
+        )
+      ).response.status,
+      400,
+    );
     const nextDaily = await call(`/admin/daily-words/${anotherDate}`, "PUT", dailyBody, adminCookie);
     assert.equal(nextDaily.response.status, 200);
     assert.equal(nextDaily.data.scriptureText, dailyBody.scriptureText);
     assert.equal((await call(`/daily-word?date=${anotherDate}`)).data.question, "오늘 누구를 사랑으로 대할까요?");
     assert.equal((await call(`/daily-word?date=${anotherDate}`)).data.source, "custom");
-    assert.equal((await call(`/daily-word?date=${anotherDate}`)).data.readingUrl, "https://bible.bskorea.or.kr/bible/NKRV/JHN.15");
+    assert.equal(
+      (await call(`/daily-word?date=${anotherDate}`)).data.readingUrl,
+      "https://bible.bskorea.or.kr/bible/NKRV/JHN.15",
+    );
     assert.equal((await call("/admin/daily-words", "GET", undefined, adminCookie)).data.length, 1);
-    const operator = await call("/admin/accounts", "POST", { name: "부운영자", account: "helper01", password: "another-strong-password-123" }, adminCookie);
+    const operator = await call(
+      "/admin/accounts",
+      "POST",
+      { name: "부운영자", account: "helper01", password: "another-strong-password-123" },
+      adminCookie,
+    );
     assert.equal(operator.response.status, 201);
-    const helper = await call("/auth/admin/login", "POST", { account: "helper01", password: "another-strong-password-123" });
+    const helper = await call("/auth/admin/login", "POST", {
+      account: "helper01",
+      password: "another-strong-password-123",
+    });
     assert.equal(helper.response.status, 201);
-    assert.equal((await call("/admin/accounts", "POST", { name: "제삼자", account: "helper02", password: "another-strong-password-456" }, helper.cookie)).response.status, 403);
+    assert.equal(
+      (
+        await call(
+          "/admin/accounts",
+          "POST",
+          { name: "제삼자", account: "helper02", password: "another-strong-password-456" },
+          helper.cookie,
+        )
+      ).response.status,
+      403,
+    );
     const list = await call("/admin/approvals", "GET", undefined, adminCookie);
     assert.equal(list.data.length, 1);
     assert.equal(list.data[0].phone, "010-5555-4321");
-    assert.equal((await call(`/admin/approvals/${list.data[0].id}/approve`, "POST", undefined, adminCookie)).response.status, 201);
+    assert.equal(
+      (await call(`/admin/approvals/${list.data[0].id}/approve`, "POST", undefined, adminCookie)).response.status,
+      201,
+    );
     assert.equal((await call("/auth/me", "GET", undefined, memberCookie)).data.status, "approved");
     assert.equal((await call("/admin/push/settings")).response.status, 401);
     assert.equal((await call("/push/config")).response.status, 401);
@@ -146,22 +293,51 @@ test("membership, moderation and photo permissions survive server storage", asyn
     assert.equal(pushSettings.response.status, 200);
     assert.equal(pushSettings.data.time, "08:00");
     assert.equal(pushSettings.data.enabled, false);
-    assert.equal((await call("/admin/push/settings", "PATCH", { enabled: false, time: "25:00" }, adminCookie)).response.status, 400);
-    assert.equal((await call("/admin/push/settings", "PATCH", { enabled: false, time: "08:15" }, adminCookie)).data.time, "08:15");
+    assert.equal(
+      (await call("/admin/push/settings", "PATCH", { enabled: false, time: "25:00" }, adminCookie)).response.status,
+      400,
+    );
+    assert.equal(
+      (await call("/admin/push/settings", "PATCH", { enabled: false, time: "08:15" }, adminCookie)).data.time,
+      "08:15",
+    );
     assert.equal((await call("/push/config", "GET", undefined, memberCookie)).response.status, 200);
     const endpoint = "https://fcm.googleapis.com/fcm/send/test-api";
-    assert.equal((await call("/push/subscriptions", "POST", { endpoint: "https://example.com/private", keys: { p256dh: "A".repeat(87), auth: "B".repeat(22) } }, memberCookie)).response.status, 400);
+    assert.equal(
+      (
+        await call(
+          "/push/subscriptions",
+          "POST",
+          { endpoint: "https://example.com/private", keys: { p256dh: "A".repeat(87), auth: "B".repeat(22) } },
+          memberCookie,
+        )
+      ).response.status,
+      400,
+    );
     assert.equal((await call("/push/status", "POST", { endpoint }, memberCookie)).data.subscribed, false);
-    assert.equal((await call("/push/subscriptions", "POST", { endpoint, keys: { p256dh: "A".repeat(87), auth: "B".repeat(22) } }, memberCookie)).response.status, 201);
+    assert.equal(
+      (
+        await call(
+          "/push/subscriptions",
+          "POST",
+          { endpoint, keys: { p256dh: "A".repeat(87), auth: "B".repeat(22) } },
+          memberCookie,
+        )
+      ).response.status,
+      201,
+    );
     assert.equal((await call("/push/status", "POST", { endpoint }, memberCookie)).data.subscribed, true);
     assert.equal((await call("/push/subscriptions", "DELETE", { endpoint }, memberCookie)).response.status, 200);
     assert.equal((await call("/push/status", "POST", { endpoint }, memberCookie)).data.subscribed, false);
     const avatarForm = (color, width, height) => {
       const form = new FormData();
-      return sharp({ create: { width, height, channels: 3, background: color } }).png().toBuffer().then((buffer) => {
-        form.append("image", new Blob([buffer], { type: "image/png" }), "avatar.png");
-        return form;
-      });
+      return sharp({ create: { width, height, channels: 3, background: color } })
+        .png()
+        .toBuffer()
+        .then((buffer) => {
+          form.append("image", new Blob([buffer], { type: "image/png" }), "avatar.png");
+          return form;
+        });
     };
     const avatarDir = join(temp, "uploads", "avatars");
     assert.equal((await call("/auth/me/avatar", "GET", undefined, memberCookie)).response.status, 404);
@@ -188,12 +364,22 @@ test("membership, moderation and photo permissions survive server storage", asyn
     const portraitAvatarSize = await sharp(Buffer.from(await portraitAvatarImage.arrayBuffer())).metadata();
     assert.equal(portraitAvatarSize.width, 512);
     assert.equal(portraitAvatarSize.height, 512);
-    assert.equal((await call(`/auth/members/${signup.data.id}/avatar`, "GET", undefined, memberCookie)).response.status, 200);
+    assert.equal(
+      (await call(`/auth/members/${signup.data.id}/avatar`, "GET", undefined, memberCookie)).response.status,
+      200,
+    );
     const avatarWord = await call("/words", "POST", { text: "프로필 사진 확인" }, memberCookie);
     assert.equal(avatarWord.response.status, 201);
-    const wordWithAvatar = (await call(`/words?date=${today}`, "GET", undefined, memberCookie)).data.find((post) => post.id === avatarWord.data.id);
+    const wordWithAvatar = (await call(`/words?date=${today}`, "GET", undefined, memberCookie)).data.find(
+      (post) => post.id === avatarWord.data.id,
+    );
     assert.match(wordWithAvatar.authorAvatarUrl, /\/api\/auth\/members\/\d+\/avatar\?v=/);
-    assert.equal((await call("/community", "GET", undefined, memberCookie)).data.wordPosts.find((post) => post.id === avatarWord.data.id).authorAvatarUrl, wordWithAvatar.authorAvatarUrl);
+    assert.equal(
+      (await call("/community", "GET", undefined, memberCookie)).data.wordPosts.find(
+        (post) => post.id === avatarWord.data.id,
+      ).authorAvatarUrl,
+      wordWithAvatar.authorAvatarUrl,
+    );
     assert.equal((await call(`/words/${avatarWord.data.id}`, "DELETE", undefined, memberCookie)).response.status, 200);
     const avatarPhotoForm = await avatarForm("green", 64, 64);
     avatarPhotoForm.set("caption", "프로필 사진 확인");
@@ -202,20 +388,39 @@ test("membership, moderation and photo permissions survive server storage", asyn
     const avatarPhoto = await call("/photos", "POST", avatarPhotoForm, memberCookie);
     assert.equal(avatarPhoto.response.status, 201);
     assert.match(avatarPhoto.data.authorAvatarUrl, /\/api\/auth\/members\/\d+\/avatar\?v=/);
-    assert.equal((await call(`/photos/${avatarPhoto.data.id}/comments`, "POST", { text: "댓글" }, memberCookie)).response.status, 201);
+    assert.equal(
+      (await call(`/photos/${avatarPhoto.data.id}/comments`, "POST", { text: "댓글" }, memberCookie)).response.status,
+      201,
+    );
     const photoWithAvatar = (await call(`/photos/${avatarPhoto.data.id}`, "GET", undefined, memberCookie)).data;
     assert.equal(photoWithAvatar.comments[0].authorAvatarUrl, avatarPhoto.data.authorAvatarUrl);
-    assert.equal((await call(`/photos/${avatarPhoto.data.id}`, "DELETE", undefined, memberCookie)).response.status, 200);
+    assert.equal(
+      (await call(`/photos/${avatarPhoto.data.id}`, "DELETE", undefined, memberCookie)).response.status,
+      200,
+    );
     assert.equal((await call("/auth/me", "GET", undefined, memberCookie)).data.avatarUrl, secondAvatar.data.avatarUrl);
     assert.equal((await call("/auth/me/avatar", "DELETE", undefined, memberCookie)).data.avatarUrl, null);
     assert.equal(readdirSync(avatarDir).length, 0);
     assert.equal((await call("/auth/me/avatar", "GET", undefined, memberCookie)).response.status, 404);
-    assert.equal((await call(`/auth/members/${signup.data.id}/avatar`, "GET", undefined, memberCookie)).response.status, 404);
+    assert.equal(
+      (await call(`/auth/members/${signup.data.id}/avatar`, "GET", undefined, memberCookie)).response.status,
+      404,
+    );
     assert.equal((await call("/admin/members", "GET", undefined, adminCookie)).data[0].phone, "010-5555-4321");
-    const notice = await call("/admin/notices", "POST", { title: "이번 주 공지", body: "함께 예배해요", status: "published" }, adminCookie);
+    const notice = await call(
+      "/admin/notices",
+      "POST",
+      { title: "이번 주 공지", body: "함께 예배해요", status: "published" },
+      adminCookie,
+    );
     assert.equal((await call(`/notices/${notice.data.id}`, "GET", undefined, memberCookie)).data.body, "함께 예배해요");
     assert.equal((await call("/notices/999999", "GET", undefined, memberCookie)).response.status, 404);
-    const draftNotice = await call("/admin/notices", "POST", { title: "비공개 초안", body: "아직 공개하지 않음", status: "draft" }, adminCookie);
+    const draftNotice = await call(
+      "/admin/notices",
+      "POST",
+      { title: "비공개 초안", body: "아직 공개하지 않음", status: "draft" },
+      adminCookie,
+    );
     assert.equal((await call(`/notices/${draftNotice.data.id}`, "GET", undefined, memberCookie)).response.status, 404);
     assert.equal(notice.response.status, 201);
     assert.equal((await call("/community", "GET", undefined, memberCookie)).data.notices[0].title, "이번 주 공지");
@@ -226,37 +431,139 @@ test("membership, moderation and photo permissions survive server storage", asyn
     assert.equal((await call(`/words?date=${anotherDate}`, "GET", undefined, memberCookie)).data.length, 0);
     const olderWord = await call("/words", "POST", { text: "다른 날의 나눔", date: anotherDate }, memberCookie);
     assert.equal(olderWord.response.status, 201);
-    assert.equal((await call(`/words?date=${anotherDate}`, "GET", undefined, memberCookie)).data[0].text, "다른 날의 나눔");
+    assert.equal(
+      (await call(`/words?date=${anotherDate}`, "GET", undefined, memberCookie)).data[0].text,
+      "다른 날의 나눔",
+    );
     assert.equal((await call("/words?date=2026-02-30", "GET", undefined, memberCookie)).response.status, 400);
-    assert.equal((await call("/words", "POST", { text: "자동 순환표 나눔", date: "2026-01-03" }, memberCookie)).response.status, 201);
-    assert.ok((await call("/community", "GET", undefined, memberCookie)).data.wordPosts.some((post) => post.text === "은혜를 나눕니다" && post.date === today));
-    const report = await call("/reports", "POST", { kind: "word", postId: word.data.id, reason: "검토 요청" }, memberCookie);
+    assert.equal(
+      (await call("/words", "POST", { text: "자동 순환표 나눔", date: "2026-01-03" }, memberCookie)).response.status,
+      201,
+    );
+    assert.ok(
+      (await call("/community", "GET", undefined, memberCookie)).data.wordPosts.some(
+        (post) => post.text === "은혜를 나눕니다" && post.date === today,
+      ),
+    );
+    const report = await call(
+      "/reports",
+      "POST",
+      { kind: "word", postId: word.data.id, reason: "검토 요청" },
+      memberCookie,
+    );
     assert.equal(report.response.status, 201);
-    assert.equal((await call("/reports", "POST", { kind: "word", postId: word.data.id, reason: "기타" }, memberCookie)).response.status, 400);
-    assert.equal((await call("/reports", "POST", { kind: "word", postId: word.data.id, reason: "기타:   " }, memberCookie)).response.status, 400);
-    const otherReport = await call("/reports", "POST", { kind: "word", postId: word.data.id, reason: "기타: 게시물 맥락 확인 필요" }, memberCookie);
+    assert.equal(
+      (await call("/reports", "POST", { kind: "word", postId: word.data.id, reason: "기타" }, memberCookie)).response
+        .status,
+      400,
+    );
+    assert.equal(
+      (await call("/reports", "POST", { kind: "word", postId: word.data.id, reason: "기타:   " }, memberCookie))
+        .response.status,
+      400,
+    );
+    const otherReport = await call(
+      "/reports",
+      "POST",
+      { kind: "word", postId: word.data.id, reason: "기타: 게시물 맥락 확인 필요" },
+      memberCookie,
+    );
     assert.equal(otherReport.response.status, 201);
-    assert.equal((await call("/admin/reports", "GET", undefined, adminCookie)).data[0].reason, "기타: 게시물 맥락 확인 필요");
+    assert.equal(
+      (await call("/admin/reports", "GET", undefined, adminCookie)).data[0].reason,
+      "기타: 게시물 맥락 확인 필요",
+    );
     assert.equal((await call("/admin/reports", "GET", undefined, adminCookie)).data[0].excerpt, "은혜를 나눕니다");
-    assert.equal((await call(`/admin/reports/${report.data.id}/resolve`, "POST", { action: "hide", resolution: "검토 후 숨김" }, adminCookie)).response.status, 201);
+    assert.equal(
+      (
+        await call(
+          `/admin/reports/${report.data.id}/resolve`,
+          "POST",
+          { action: "hide", resolution: "검토 후 숨김" },
+          adminCookie,
+        )
+      ).response.status,
+      201,
+    );
     const reportedWord = await call("/words", "POST", { text: "작성자가 알림을 받을 글", date: today }, memberCookie);
-    const reporterSignup = await call("/auth/signup", "POST", { name: "신고자", phone: "010-5555-4322", church: "테스트교회", consent: true, password: memberPassword });
+    const reporterSignup = await call("/auth/signup", "POST", {
+      name: "신고자",
+      phone: "010-5555-4322",
+      church: "테스트교회",
+      consent: true,
+      password: memberPassword,
+    });
     assert.equal(reporterSignup.response.status, 201);
-    assert.equal((await call(`/admin/approvals/${reporterSignup.data.id}/approve`, "POST", undefined, adminCookie)).response.status, 201);
-    const deleteReport = await call("/reports", "POST", { kind: "word", postId: reportedWord.data.id, reason: "신고 내용" }, reporterSignup.cookie);
+    assert.equal(
+      (await call(`/admin/approvals/${reporterSignup.data.id}/approve`, "POST", undefined, adminCookie)).response
+        .status,
+      201,
+    );
+    const deleteReport = await call(
+      "/reports",
+      "POST",
+      { kind: "word", postId: reportedWord.data.id, reason: "신고 내용" },
+      reporterSignup.cookie,
+    );
     assert.equal(deleteReport.response.status, 201);
-    assert.equal((await call(`/admin/reports/${deleteReport.data.id}/resolve`, "POST", { action: "delete", resolution: "" }, adminCookie)).response.status, 400);
-    assert.equal((await call(`/admin/reports/${deleteReport.data.id}/resolve`, "POST", { action: "delete", resolution: "다른 구성원 비방" }, adminCookie)).response.status, 201);
+    assert.equal(
+      (
+        await call(
+          `/admin/reports/${deleteReport.data.id}/resolve`,
+          "POST",
+          { action: "delete", resolution: "" },
+          adminCookie,
+        )
+      ).response.status,
+      400,
+    );
+    assert.equal(
+      (
+        await call(
+          `/admin/reports/${deleteReport.data.id}/resolve`,
+          "POST",
+          { action: "delete", resolution: "다른 구성원 비방" },
+          adminCookie,
+        )
+      ).response.status,
+      201,
+    );
     const ownerInbox = (await call("/inbox", "GET", undefined, memberCookie)).data.items;
-    assert.ok(ownerInbox.some((item) => item.title === "말씀 나눔이 삭제되었어요" && item.body === "삭제 사유: 다른 구성원 비방" && item.url === "/community/inbox"));
-    assert.equal((await call("/inbox", "GET", undefined, reporterSignup.cookie)).data.items.some((item) => item.title === "말씀 나눔이 삭제되었어요"), false);
-    assert.equal((await call(`/admin/reports/${deleteReport.data.id}/resolve`, "POST", { action: "delete", resolution: "반복" }, adminCookie)).response.status, 404);
+    assert.ok(
+      ownerInbox.some(
+        (item) =>
+          item.title === "말씀 나눔이 삭제되었어요" &&
+          item.body === "삭제 사유: 다른 구성원 비방" &&
+          item.url === "/community/inbox",
+      ),
+    );
+    assert.equal(
+      (await call("/inbox", "GET", undefined, reporterSignup.cookie)).data.items.some(
+        (item) => item.title === "말씀 나눔이 삭제되었어요",
+      ),
+      false,
+    );
+    assert.equal(
+      (
+        await call(
+          `/admin/reports/${deleteReport.data.id}/resolve`,
+          "POST",
+          { action: "delete", resolution: "반복" },
+          adminCookie,
+        )
+      ).response.status,
+      404,
+    );
     const remainingWords = (await call("/community", "GET", undefined, memberCookie)).data.wordPosts;
     assert.equal(remainingWords.length, 2);
     assert.ok(remainingWords.some((post) => post.id === olderWord.data.id));
     const image = new FormData();
-    image.set("caption", "함께한 날"); image.set("peopleConsent", "true"); image.set("locationConsent", "true");
-    const originalPhoto = await sharp(randomBytes(2000 * 1500 * 3), { raw: { width: 2000, height: 1500, channels: 3 } }).jpeg({ quality: 95 }).toBuffer();
+    image.set("caption", "함께한 날");
+    image.set("peopleConsent", "true");
+    image.set("locationConsent", "true");
+    const originalPhoto = await sharp(randomBytes(2000 * 1500 * 3), { raw: { width: 2000, height: 1500, channels: 3 } })
+      .jpeg({ quality: 95 })
+      .toBuffer();
     assert.ok(originalPhoto.length < 10 * 1024 * 1024);
     image.set("image", new Blob([originalPhoto], { type: "image/jpeg" }), "one.jpg");
     const photo = await call("/photos", "POST", image, memberCookie);
@@ -277,14 +584,34 @@ test("membership, moderation and photo permissions survive server storage", asyn
     assert.ok(storedPhoto.endsWith(".webp"));
     assert.equal(storedPhotos.length, 1);
     const damagedPhoto = new FormData();
-    damagedPhoto.set("caption", "잘못된 사진"); damagedPhoto.set("peopleConsent", "true"); damagedPhoto.set("locationConsent", "true");
+    damagedPhoto.set("caption", "잘못된 사진");
+    damagedPhoto.set("peopleConsent", "true");
+    damagedPhoto.set("locationConsent", "true");
     damagedPhoto.set("image", new Blob([originalPhoto.subarray(0, 400)], { type: "image/jpeg" }), "broken.jpg");
     assert.equal((await call("/photos", "POST", damagedPhoto, memberCookie)).response.status, 400);
     const comment = await call(`/photos/${photo.data.id}/comments`, "POST", { text: "좋아요" }, memberCookie);
     assert.equal(comment.response.status, 201);
-    assert.equal((await call(`/photos/${photo.data.id}/comments/${comment.data.id}`, "PATCH", { text: "정말 좋아요" }, memberCookie)).response.status, 200);
-    assert.equal((await call(`/photos/${photo.data.id}`, "GET", undefined, memberCookie)).data.comments[0].text, "정말 좋아요");
-    const photoReport = await call("/reports", "POST", { kind: "photo", postId: photo.data.id, reason: "사진 검토" }, reporterSignup.cookie);
+    assert.equal(
+      (
+        await call(
+          `/photos/${photo.data.id}/comments/${comment.data.id}`,
+          "PATCH",
+          { text: "정말 좋아요" },
+          memberCookie,
+        )
+      ).response.status,
+      200,
+    );
+    assert.equal(
+      (await call(`/photos/${photo.data.id}`, "GET", undefined, memberCookie)).data.comments[0].text,
+      "정말 좋아요",
+    );
+    const photoReport = await call(
+      "/reports",
+      "POST",
+      { kind: "photo", postId: photo.data.id, reason: "사진 검토" },
+      reporterSignup.cookie,
+    );
     assert.equal(photoReport.response.status, 201);
     const imagePath = `/admin/reports/${photoReport.data.id}/image`;
     assert.equal((await fetch(`${base}${imagePath}`)).status, 401);
@@ -292,9 +619,18 @@ test("membership, moderation and photo permissions survive server storage", asyn
     assert.equal(reportedImage.status, 200);
     assert.match(reportedImage.headers.get("content-type"), /image\/webp/);
     assert.deepEqual(Buffer.from(await reportedImage.arrayBuffer()), optimizedPhoto);
-    const commentReport = await call("/reports", "POST", { kind: "comment", postId: comment.data.id, reason: "댓글 검토" }, reporterSignup.cookie);
+    const commentReport = await call(
+      "/reports",
+      "POST",
+      { kind: "comment", postId: comment.data.id, reason: "댓글 검토" },
+      reporterSignup.cookie,
+    );
     assert.equal(commentReport.response.status, 201);
-    assert.equal((await fetch(`${base}/admin/reports/${commentReport.data.id}/image`, { headers: { Cookie: adminCookie } })).status, 200);
+    assert.equal(
+      (await fetch(`${base}/admin/reports/${commentReport.data.id}/image`, { headers: { Cookie: adminCookie } }))
+        .status,
+      200,
+    );
     assert.equal((await call(`/photos/${photo.data.id}`, "DELETE", undefined, memberCookie)).response.status, 200);
     assert.equal((await fetch(`${base}${imagePath}`, { headers: { Cookie: adminCookie } })).status, 404);
     assert.equal(existsSync(join(temp, "uploads", storedPhoto)), false);
@@ -303,7 +639,10 @@ test("membership, moderation and photo permissions survive server storage", asyn
     assert.equal(reset.response.status, 201);
     assert.ok(reset.data.password.length >= 12);
     assert.equal((await call("/auth/me", "GET", undefined, memberCookie)).response.status, 401);
-    assert.equal((await call("/auth/login", "POST", { phone: "010-5555-4321", password: memberPassword })).response.status, 401);
+    assert.equal(
+      (await call("/auth/login", "POST", { phone: "010-5555-4321", password: memberPassword })).response.status,
+      401,
+    );
     const resetLogin = await call("/auth/login", "POST", { phone: "010-5555-4321", password: reset.data.password });
     assert.equal(resetLogin.response.status, 201);
     assert.equal(resetLogin.data.status, "approved");
@@ -312,18 +651,62 @@ test("membership, moderation and photo permissions survive server storage", asyn
     const blockedUntilChange = await call("/community", "GET", undefined, resetLogin.cookie);
     assert.equal(blockedUntilChange.response.status, 403);
     assert.equal(blockedUntilChange.data.message, "임시 비밀번호를 변경해 주세요.");
-    assert.equal((await call("/auth/change-password", "POST", { currentPassword: "wrong", newPassword: "NewMemberPass12" }, resetLogin.cookie)).response.status, 401);
-    assert.equal((await call("/auth/change-password", "POST", { currentPassword: reset.data.password, newPassword: "short" }, resetLogin.cookie)).response.status, 400);
-    assert.equal((await call("/auth/change-password", "POST", { currentPassword: reset.data.password, newPassword: reset.data.password }, resetLogin.cookie)).response.status, 400);
-    const changed = await call("/auth/change-password", "POST", { currentPassword: reset.data.password, newPassword: "NewMemberPass12" }, resetLogin.cookie);
+    assert.equal(
+      (
+        await call(
+          "/auth/change-password",
+          "POST",
+          { currentPassword: "wrong", newPassword: "NewMemberPass12" },
+          resetLogin.cookie,
+        )
+      ).response.status,
+      401,
+    );
+    assert.equal(
+      (
+        await call(
+          "/auth/change-password",
+          "POST",
+          { currentPassword: reset.data.password, newPassword: "short" },
+          resetLogin.cookie,
+        )
+      ).response.status,
+      400,
+    );
+    assert.equal(
+      (
+        await call(
+          "/auth/change-password",
+          "POST",
+          { currentPassword: reset.data.password, newPassword: reset.data.password },
+          resetLogin.cookie,
+        )
+      ).response.status,
+      400,
+    );
+    const changed = await call(
+      "/auth/change-password",
+      "POST",
+      { currentPassword: reset.data.password, newPassword: "NewMemberPass12" },
+      resetLogin.cookie,
+    );
     assert.equal(changed.response.status, 201);
     assert.equal(changed.data.mustChangePassword, false);
     assert.equal((await call("/auth/me", "GET", undefined, resetLogin.cookie)).response.status, 401);
     assert.equal((await call("/auth/me", "GET", undefined, changed.cookie)).data.mustChangePassword, false);
     assert.equal((await call("/community", "GET", undefined, changed.cookie)).response.status, 200);
-    assert.equal((await call("/auth/login", "POST", { phone: "010-5555-4321", password: reset.data.password })).response.status, 401);
-    assert.equal((await call("/auth/login", "POST", { phone: "010-5555-4321", password: "NewMemberPass12" })).response.status, 201);
-    assert.equal((await call(`/admin/accounts/${operator.data.id}`, "DELETE", undefined, adminCookie)).response.status, 200);
+    assert.equal(
+      (await call("/auth/login", "POST", { phone: "010-5555-4321", password: reset.data.password })).response.status,
+      401,
+    );
+    assert.equal(
+      (await call("/auth/login", "POST", { phone: "010-5555-4321", password: "NewMemberPass12" })).response.status,
+      201,
+    );
+    assert.equal(
+      (await call(`/admin/accounts/${operator.data.id}`, "DELETE", undefined, adminCookie)).response.status,
+      200,
+    );
     assert.equal((await call("/admin/dashboard", "GET", undefined, helper.cookie)).response.status, 401);
   } finally {
     child.kill();

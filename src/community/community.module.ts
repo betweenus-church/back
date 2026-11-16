@@ -6,5 +6,9 @@ import { InboxModule } from "../inbox/inbox.module";
 import { CommunityController } from "./community.controller";
 import { CommunityService } from "./community.service";
 
-@Module({ imports: [AuthModule, DatabaseModule, DailyWordModule, InboxModule], controllers: [CommunityController], providers: [CommunityService] })
+@Module({
+  imports: [AuthModule, DatabaseModule, DailyWordModule, InboxModule],
+  controllers: [CommunityController],
+  providers: [CommunityService],
+})
 export class CommunityModule {}

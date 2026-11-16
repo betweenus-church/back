@@ -30,7 +30,13 @@ export class MemberPushController {
 export class AdminPushController {
   constructor(private readonly push: PushService) {}
 
-  @Get("settings") settings() { return this.push.adminSettings(); }
-  @Patch("settings") update(@Body() body: unknown) { return this.push.updateSettings(body); }
-  @Post("send") send(@Body() body: unknown) { return this.push.sendAnnouncement(body); }
+  @Get("settings") settings() {
+    return this.push.adminSettings();
+  }
+  @Patch("settings") update(@Body() body: unknown) {
+    return this.push.updateSettings(body);
+  }
+  @Post("send") send(@Body() body: unknown) {
+    return this.push.sendAnnouncement(body);
+  }
 }

@@ -1,4 +1,11 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, StreamableFile } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  StreamableFile,
+} from "@nestjs/common";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
@@ -10,19 +17,27 @@ import { PushService } from "../push/push.service";
 type Row = Record<string, string | number | null>;
 function stringField(body: unknown, key: string, max: number) {
   const value = (body as Record<string, unknown> | null)?.[key];
-  if (typeof value !== "string" || !value.trim() || value.trim().length > max) throw new BadRequestException(`${key} must be 1-${max} characters`);
+  if (typeof value !== "string" || !value.trim() || value.trim().length > max)
+    throw new BadRequestException(`${key} must be 1-${max} characters`);
   return value.trim();
 }
-function formatPhone(phone: string) { return phone.replace(/^(\d{3})(\d{3,4})(\d{4})$/, "$1-$2-$3"); }
+function formatPhone(phone: string) {
+  return phone.replace(/^(\d{3})(\d{3,4})(\d{4})$/, "$1-$2-$3");
+}
 
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
-  constructor(private readonly data: DatabaseService, private readonly inbox: InboxService, private readonly push: PushService) {}
+  constructor(
+    private readonly data: DatabaseService,
+    private readonly inbox: InboxService,
+    private readonly push: PushService,
+  ) {}
   dashboard() {
     const db = this.data.db;
     return {
-      pendingApprovals: (db.prepare("SELECT count(*) AS n FROM members WHERE status='pending'").get() as { n: number }).n,
+      pendingApprovals: (db.prepare("SELECT count(*) AS n FROM members WHERE status='pending'").get() as { n: number })
+        .n,
       pendingReports: (db.prepare("SELECT count(*) AS n FROM reports WHERE status='pending'").get() as { n: number }).n,
       members: (db.prepare("SELECT count(*) AS n FROM members WHERE status='approved'").get() as { n: number }).n,
       recentRequests: this.approvals().slice(0, 5),
@@ -30,26 +45,51 @@ export class AdminService {
   }
   approvals() {
     const rows = this.data.db.prepare("SELECT * FROM members ORDER BY id DESC").all() as Row[];
-    return rows.map((row) => ({ id: row.id, name: row.name, church: row.church, phone: formatPhone(String(row.phone)), requestedAt: row.created_at, status: row.status, reason: row.reason }));
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      church: row.church,
+      phone: formatPhone(String(row.phone)),
+      requestedAt: row.created_at,
+      status: row.status,
+      reason: row.reason,
+    }));
   }
   decision(id: number, status: "approved" | "rejected", body: unknown) {
     const reason = status === "rejected" ? stringField(body, "reason", 500) : null;
-    const result = this.data.db.prepare("UPDATE members SET status=?,reason=?,updated_at=? WHERE id=? AND status='pending'").run(status, reason, new Date().toISOString(), id);
+    const result = this.data.db
+      .prepare("UPDATE members SET status=?,reason=?,updated_at=? WHERE id=? AND status='pending'")
+      .run(status, reason, new Date().toISOString(), id);
     if (!result.changes) throw new NotFoundException("Pending request not found");
     return { id, status };
   }
   members() {
-    const rows = this.data.db.prepare("SELECT * FROM members WHERE status IN ('approved','suspended') ORDER BY id DESC").all() as Row[];
-    return rows.map((row) => ({ id: row.id, name: row.name, phone: formatPhone(String(row.phone)), church: row.church, status: row.status, joined: row.created_at, restrictionReason: row.reason }));
+    const rows = this.data.db
+      .prepare("SELECT * FROM members WHERE status IN ('approved','suspended') ORDER BY id DESC")
+      .all() as Row[];
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      phone: formatPhone(String(row.phone)),
+      church: row.church,
+      status: row.status,
+      joined: row.created_at,
+      restrictionReason: row.reason,
+    }));
   }
   updateMember(id: number, body: unknown) {
     const name = stringField(body, "name", 30);
     const church = stringField(body, "church", 60);
     const phone = stringField(body, "phone", 13).replace(/\D/g, "");
     if (!/^01[016789]\d{7,8}$/.test(phone)) throw new BadRequestException("Invalid phone number");
-    if (church.replace(/\s/g, "") !== process.env.CHURCH_NAME!.replace(/\s/g, "")) throw new BadRequestException("Unknown church");
+    if (church.replace(/\s/g, "") !== process.env.CHURCH_NAME!.replace(/\s/g, ""))
+      throw new BadRequestException("Unknown church");
     try {
-      const result = this.data.db.prepare("UPDATE members SET name=?,phone=?,church=?,updated_at=? WHERE id=? AND status IN ('approved','suspended')").run(name, phone, church, new Date().toISOString(), id);
+      const result = this.data.db
+        .prepare(
+          "UPDATE members SET name=?,phone=?,church=?,updated_at=? WHERE id=? AND status IN ('approved','suspended')",
+        )
+        .run(name, phone, church, new Date().toISOString(), id);
       if (!result.changes) throw new NotFoundException();
     } catch (error) {
       if (String(error).includes("UNIQUE constraint")) throw new ConflictException("Phone number already used");
@@ -59,9 +99,12 @@ export class AdminService {
   }
   memberStatus(id: number, body: unknown) {
     const status = (body as Record<string, unknown>)?.status;
-    if (status !== "approved" && status !== "suspended") throw new BadRequestException("status must be approved or suspended");
+    if (status !== "approved" && status !== "suspended")
+      throw new BadRequestException("status must be approved or suspended");
     const reason = status === "suspended" ? stringField(body, "reason", 500) : null;
-    const result = this.data.db.prepare("UPDATE members SET status=?,reason=?,updated_at=? WHERE id=? AND status IN ('approved','suspended')").run(status, reason, new Date().toISOString(), id);
+    const result = this.data.db
+      .prepare("UPDATE members SET status=?,reason=?,updated_at=? WHERE id=? AND status IN ('approved','suspended')")
+      .run(status, reason, new Date().toISOString(), id);
     if (!result.changes) throw new NotFoundException();
     return { id, status };
   }
@@ -72,36 +115,62 @@ export class AdminService {
     const password = randomBytes(18).toString("base64url");
     db.exec("BEGIN");
     try {
-      db.prepare("UPDATE members SET password_hash=?,must_change_password=1,updated_at=? WHERE id=?").run(passwordHash(password), new Date().toISOString(), id);
+      db.prepare("UPDATE members SET password_hash=?,must_change_password=1,updated_at=? WHERE id=?").run(
+        passwordHash(password),
+        new Date().toISOString(),
+        id,
+      );
       db.prepare("DELETE FROM sessions WHERE member_id=?").run(id);
       db.prepare("DELETE FROM push_subscriptions WHERE member_id=?").run(id);
       db.exec("COMMIT");
-    } catch (error) { db.exec("ROLLBACK"); throw error; }
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
     return { password };
   }
   private reportTarget(kind: string, id: number, createdAt: string | null) {
     if (!createdAt) return undefined;
     const table = { photo: "photos", word: "word_posts", prayer: "prayers", comment: "photo_comments" }[kind];
     if (!table) return undefined;
-    if (kind === "comment") return this.data.db.prepare("SELECT c.*,p.image_file FROM photo_comments c JOIN photos p ON p.id=c.photo_id WHERE c.id=? AND c.created_at=? AND c.hidden=0 AND p.hidden=0").get(id, createdAt) as Row | undefined;
-    return this.data.db.prepare(`SELECT * FROM ${table} WHERE id=? AND created_at=? AND hidden=0`).get(id, createdAt) as Row | undefined;
+    if (kind === "comment")
+      return this.data.db
+        .prepare(
+          "SELECT c.*,p.image_file FROM photo_comments c JOIN photos p ON p.id=c.photo_id WHERE c.id=? AND c.created_at=? AND c.hidden=0 AND p.hidden=0",
+        )
+        .get(id, createdAt) as Row | undefined;
+    return this.data.db
+      .prepare(`SELECT * FROM ${table} WHERE id=? AND created_at=? AND hidden=0`)
+      .get(id, createdAt) as Row | undefined;
   }
   reports() {
-    const rows = this.data.db.prepare(`SELECT r.id,r.kind,r.post_id AS postId,r.reason,r.status,r.action,r.resolution,r.created_at AS createdAt,r.handled_at AS handledAt,r.target_created_at AS targetCreatedAt,
-      m.name AS reporter FROM reports r JOIN members m ON m.id=r.reporter_id ORDER BY r.id DESC`).all() as Row[];
-    return rows.map(row => {
+    const rows = this.data.db
+      .prepare(
+        `SELECT r.id,r.kind,r.post_id AS postId,r.reason,r.status,r.action,r.resolution,r.created_at AS createdAt,r.handled_at AS handledAt,r.target_created_at AS targetCreatedAt,
+      m.name AS reporter FROM reports r JOIN members m ON m.id=r.reporter_id ORDER BY r.id DESC`,
+      )
+      .all() as Row[];
+    return rows.map((row) => {
       const target = this.reportTarget(String(row.kind), Number(row.postId), row.targetCreatedAt as string | null);
       return { ...row, targetAvailable: Boolean(target), excerpt: target?.caption ?? target?.text ?? null };
     });
   }
   reportImage(id: number) {
-    const report = this.data.db.prepare("SELECT kind,post_id,target_created_at FROM reports WHERE id=?").get(id) as { kind: string; post_id: number; target_created_at: string | null } | undefined;
-    const target = report && ["photo", "comment"].includes(report.kind) ? this.reportTarget(report.kind, report.post_id, report.target_created_at) : undefined;
-    if (!target || typeof target.image_file !== "string" || basename(target.image_file) !== target.image_file) throw new NotFoundException("Reported photo not found");
+    const report = this.data.db.prepare("SELECT kind,post_id,target_created_at FROM reports WHERE id=?").get(id) as
+      { kind: string; post_id: number; target_created_at: string | null } | undefined;
+    const target =
+      report && ["photo", "comment"].includes(report.kind)
+        ? this.reportTarget(report.kind, report.post_id, report.target_created_at)
+        : undefined;
+    if (!target || typeof target.image_file !== "string" || basename(target.image_file) !== target.image_file)
+      throw new NotFoundException("Reported photo not found");
     const row = { imageFile: target.image_file };
     let bytes: Buffer;
-    try { bytes = readFileSync(resolve(process.env.UPLOAD_DIR || "./data/uploads", row.imageFile)); }
-    catch { throw new NotFoundException("Reported photo not found"); }
+    try {
+      bytes = readFileSync(resolve(process.env.UPLOAD_DIR || "./data/uploads", row.imageFile));
+    } catch {
+      throw new NotFoundException("Reported photo not found");
+    }
     const extension = row.imageFile.split(".").pop();
     return new StreamableFile(bytes, {
       type: extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : "image/jpeg",
@@ -113,25 +182,43 @@ export class AdminService {
     if (!["dismiss", "hide", "delete"].includes(String(action))) throw new BadRequestException("Invalid action");
     const resolution = stringField(body, "resolution", 500);
     const db = this.data.db;
-    const row = db.prepare("SELECT kind,post_id,status,target_created_at FROM reports WHERE id=?").get(id) as { kind: string; post_id: number; status: string; target_created_at: string | null } | undefined;
+    const row = db.prepare("SELECT kind,post_id,status,target_created_at FROM reports WHERE id=?").get(id) as
+      { kind: string; post_id: number; status: string; target_created_at: string | null } | undefined;
     if (!row || row.status !== "pending") throw new NotFoundException("Pending report not found");
     const table = { photo: "photos", word: "word_posts", prayer: "prayers", comment: "photo_comments" }[row.kind];
     if (!table) throw new BadRequestException("Unknown report kind");
     const owner = this.reportTarget(row.kind, row.post_id, row.target_created_at);
-    if (action !== "dismiss" && !owner) throw new ConflictException("원본이 삭제되었거나 확인할 수 없는 신고예요. 기각으로 검토를 종료해 주세요.");
+    if (action !== "dismiss" && !owner)
+      throw new ConflictException("원본이 삭제되었거나 확인할 수 없는 신고예요. 기각으로 검토를 종료해 주세요.");
     let notification: { title: string; body: string; url: string } | null = null;
     db.exec("BEGIN");
     try {
       if (action !== "dismiss") db.prepare(`UPDATE ${table} SET hidden=1 WHERE id=?`).run(row.post_id);
-      db.prepare("UPDATE reports SET status='resolved',action=?,resolution=?,handled_at=? WHERE id=?").run(action as string, resolution, new Date().toISOString(), id);
+      db.prepare("UPDATE reports SET status='resolved',action=?,resolution=?,handled_at=? WHERE id=?").run(
+        action as string,
+        resolution,
+        new Date().toISOString(),
+        id,
+      );
       if (action === "delete" && owner && !owner.hidden) {
-        notification = this.inbox.moderationRemoved(Number(owner.member_id), row.kind as "photo" | "word" | "prayer" | "comment", resolution, id);
+        notification = this.inbox.moderationRemoved(
+          Number(owner.member_id),
+          row.kind as "photo" | "word" | "prayer" | "comment",
+          resolution,
+          id,
+        );
       }
       db.exec("COMMIT");
-    } catch (error) { db.exec("ROLLBACK"); throw error; }
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
     if (notification && owner) {
-      try { await this.push.sendToMember(Number(owner.member_id), notification.title, notification.body, notification.url); }
-      catch (error) { this.logger.warn(`Moderation push failed after report ${id}: ${String(error)}`); }
+      try {
+        await this.push.sendToMember(Number(owner.member_id), notification.title, notification.body, notification.url);
+      } catch (error) {
+        this.logger.warn(`Moderation push failed after report ${id}: ${String(error)}`);
+      }
     }
     return { id, status: "resolved", action };
   }
@@ -158,7 +245,9 @@ export class AdminService {
     if (!/^[a-zA-Z0-9_]{4,20}$/.test(account) || account === "root") throw new BadRequestException("Invalid account");
     if (password.length < 12) throw new BadRequestException("Password must have at least 12 characters");
     try {
-      const result = this.data.db.prepare("INSERT INTO admin_accounts(name,account,password_hash,created_at) VALUES(?,?,?,?)").run(name, account, passwordHash(password), new Date().toISOString());
+      const result = this.data.db
+        .prepare("INSERT INTO admin_accounts(name,account,password_hash,created_at) VALUES(?,?,?,?)")
+        .run(name, account, passwordHash(password), new Date().toISOString());
       return { id: Number(result.lastInsertRowid), name, account };
     } catch (error) {
       if (String(error).includes("UNIQUE constraint")) throw new ConflictException("Account already exists");
@@ -174,10 +263,15 @@ export class AdminService {
       const result = db.prepare("DELETE FROM admin_accounts WHERE id=?").run(id);
       if (!result.changes) throw new NotFoundException();
       db.exec("COMMIT");
-    } catch (error) { db.exec("ROLLBACK"); throw error; }
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
     return { ok: true };
   }
-  notices() { return this.data.db.prepare("SELECT * FROM notices ORDER BY pinned DESC,id DESC").all(); }
+  notices() {
+    return this.data.db.prepare("SELECT * FROM notices ORDER BY pinned DESC,id DESC").all();
+  }
   notice(id: number) {
     const row = this.data.db.prepare("SELECT * FROM notices WHERE id=?").get(id);
     if (!row) throw new NotFoundException();
@@ -187,11 +281,17 @@ export class AdminService {
     const title = stringField(body, "title", 100);
     const content = stringField(body, "body", 5000);
     const status = (body as Record<string, unknown>)?.status;
-    if (status !== "draft" && status !== "published" && status !== "scheduled") throw new BadRequestException("Invalid notice status");
+    if (status !== "draft" && status !== "published" && status !== "scheduled")
+      throw new BadRequestException("Invalid notice status");
     const scheduledAt = status === "scheduled" ? stringField(body, "scheduledAt", 40) : null;
-    if (scheduledAt && (Number.isNaN(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now())) throw new BadRequestException("Invalid schedule");
+    if (scheduledAt && (Number.isNaN(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now()))
+      throw new BadRequestException("Invalid schedule");
     const now = new Date().toISOString();
-    const id = Number(this.data.db.prepare("INSERT INTO notices(title,body,status,scheduled_at,created_at,updated_at) VALUES(?,?,?,?,?,?)").run(title, content, status, scheduledAt, now, now).lastInsertRowid);
+    const id = Number(
+      this.data.db
+        .prepare("INSERT INTO notices(title,body,status,scheduled_at,created_at,updated_at) VALUES(?,?,?,?,?,?)")
+        .run(title, content, status, scheduledAt, now, now).lastInsertRowid,
+    );
     return this.notice(id);
   }
   updateNotice(id: number, body: unknown) {
@@ -199,12 +299,22 @@ export class AdminService {
     const title = stringField(body, "title", 100);
     const content = stringField(body, "body", 5000);
     const status = (body as Record<string, unknown>)?.status;
-    if (!["draft", "published", "scheduled", "ended"].includes(String(status))) throw new BadRequestException("Invalid notice status");
+    if (!["draft", "published", "scheduled", "ended"].includes(String(status)))
+      throw new BadRequestException("Invalid notice status");
     const pinned = (body as Record<string, unknown>)?.pinned === true ? 1 : 0;
     const scheduledAt = status === "scheduled" ? stringField(body, "scheduledAt", 40) : null;
-    if (scheduledAt && (Number.isNaN(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now())) throw new BadRequestException("Invalid schedule");
-    this.data.db.prepare("UPDATE notices SET title=?,body=?,status=?,pinned=?,scheduled_at=?,updated_at=? WHERE id=?").run(title, content, status as string, pinned, scheduledAt, new Date().toISOString(), id);
+    if (scheduledAt && (Number.isNaN(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now()))
+      throw new BadRequestException("Invalid schedule");
+    this.data.db
+      .prepare("UPDATE notices SET title=?,body=?,status=?,pinned=?,scheduled_at=?,updated_at=? WHERE id=?")
+      .run(title, content, status as string, pinned, scheduledAt, new Date().toISOString(), id);
     return this.notice(id);
   }
-  publishedNotices() { return this.data.db.prepare("SELECT id,title,body,pinned,created_at FROM notices WHERE status='published' ORDER BY pinned DESC,id DESC").all(); }
+  publishedNotices() {
+    return this.data.db
+      .prepare(
+        "SELECT id,title,body,pinned,created_at FROM notices WHERE status='published' ORDER BY pinned DESC,id DESC",
+      )
+      .all();
+  }
 }

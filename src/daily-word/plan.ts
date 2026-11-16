@@ -4,13 +4,23 @@ import { scriptureTextByReference } from "./scripture-texts";
 const entries = [
   ["히브리서 13:1", "서로를 향한 사랑을 이어 가요.", "오늘 공동체에 건넬 작은 친절은 무엇인가요?", "HEB.13"],
   ["로마서 12:10", "서로를 존중하는 마음으로 가까워져요.", "오늘 누구를 먼저 존중하며 대할 수 있을까요?", "ROM.12"],
-  ["빌립보서 4:6", "걱정을 혼자 안고 있지 말고 기도로 나눠요.", "지금 하나님께 맡기고 싶은 걱정은 무엇인가요?", "PHP.4"],
+  [
+    "빌립보서 4:6",
+    "걱정을 혼자 안고 있지 말고 기도로 나눠요.",
+    "지금 하나님께 맡기고 싶은 걱정은 무엇인가요?",
+    "PHP.4",
+  ],
   ["마태복음 5:9", "작은 화해의 걸음이 평화를 만들어요.", "오늘 내가 먼저 화해를 시작할 관계가 있나요?", "MAT.5"],
   ["시편 23:1", "하나님의 돌보심을 기억하며 하루를 걸어요.", "오늘 나에게 필요한 돌보심은 무엇인가요?", "PSA.23"],
   ["야고보서 1:5", "모르는 길 앞에서 지혜를 구해요.", "어떤 선택을 위해 지혜가 필요한가요?", "JAS.1"],
   ["잠언 3:5", "내 판단을 넘어 하나님을 신뢰해요.", "지금 놓기 어려운 내 생각은 무엇인가요?", "PRO.3"],
   ["이사야 40:31", "지친 마음에 다시 힘을 구해요.", "이번 주에 새 힘이 필요한 순간은 언제인가요?", "ISA.40"],
-  ["고린도전서 13:4", "사랑은 기다리고 배려하는 데서 자라요.", "오늘 인내로 사랑을 보여 줄 사람은 누구인가요?", "1CO.13"],
+  [
+    "고린도전서 13:4",
+    "사랑은 기다리고 배려하는 데서 자라요.",
+    "오늘 인내로 사랑을 보여 줄 사람은 누구인가요?",
+    "1CO.13",
+  ],
   ["요한복음 15:12", "받은 사랑을 서로에게 전해요.", "오늘 누구에게 사랑을 행동으로 전할 수 있나요?", "JHN.15"],
   ["골로새서 3:13", "서로의 부족함을 품고 용서를 배워요.", "내가 용서를 구하거나 건넬 일은 무엇인가요?", "COL.3"],
   ["갈라디아서 6:2", "무거운 짐을 함께 들 때 공동체가 돼요.", "함께 짐을 들어 줄 사람은 누구인가요?", "GAL.6"],
@@ -47,7 +57,15 @@ export function officialReadingUrl(reference: string): string {
 export function plannedWord(date: string) {
   const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.UTC(2026, 9, 2)) / 86_400_000);
   const [reference, verse, question, chapter] = entries[((days % entries.length) + entries.length) % entries.length];
-  return { date, reference, verse, scriptureText: scriptureTextByReference[reference],
-    scriptureVersion: "개역한글판", scriptureAttribution: "대한성서공회",
-    question, readingUrl: `https://bible.bskorea.or.kr/bible/NKRV/${chapter}`, source: "plan" as const };
+  return {
+    date,
+    reference,
+    verse,
+    scriptureText: scriptureTextByReference[reference],
+    scriptureVersion: "개역한글판",
+    scriptureAttribution: "대한성서공회",
+    question,
+    readingUrl: `https://bible.bskorea.or.kr/bible/NKRV/${chapter}`,
+    source: "plan" as const,
+  };
 }

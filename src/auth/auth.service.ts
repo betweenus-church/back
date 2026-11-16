@@ -121,8 +121,7 @@ export class AuthService {
   member(req: ApiRequest, approved = true) {
     const session = this.session(req, "member");
     const member = this.data.db.prepare("SELECT * FROM members WHERE id=?").get(session.member_id) as
-      | MemberRow
-      | undefined;
+      MemberRow | undefined;
     if (!member) throw new UnauthorizedException();
     if (approved && member.status !== "approved") throw new ForbiddenException("Approval required");
     if (approved && member.must_change_password) throw new ForbiddenException("임시 비밀번호를 변경해 주세요.");
@@ -251,8 +250,7 @@ export class AuthService {
         : "";
     const row = account
       ? (this.data.db.prepare("SELECT id,password_hash FROM admin_accounts WHERE account=?").get(account) as
-          | { id: number; password_hash: string }
-          | undefined)
+          { id: number; password_hash: string } | undefined)
       : undefined;
     const valid = account
       ? Boolean(row && verifyPassword(password, row.password_hash))
@@ -290,8 +288,7 @@ export class AuthService {
       const tokenHash = hash(token);
       if (role === "member") {
         const session = this.data.db.prepare("SELECT member_id FROM sessions WHERE token_hash=?").get(tokenHash) as
-          | { member_id: number | null }
-          | undefined;
+          { member_id: number | null } | undefined;
         const endpoint = (body as Record<string, unknown> | null)?.endpoint;
         if (session?.member_id && typeof endpoint === "string" && endpoint.length <= 2048) {
           this.data.db

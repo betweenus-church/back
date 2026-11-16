@@ -7,23 +7,36 @@ const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_INPUT_PIXELS = 40_000_000;
 const MAX_EDGE = 1280;
 
-export async function optimizeImage(file: ImageUpload, maxEdge = MAX_EDGE, square = false, targetBytes = 256 * 1024): Promise<{ buffer: Buffer; ext: "webp" }> {
+export async function optimizeImage(
+  file: ImageUpload,
+  maxEdge = MAX_EDGE,
+  square = false,
+  targetBytes = 256 * 1024,
+): Promise<{ buffer: Buffer; ext: "webp" }> {
   if (!file.buffer?.length || file.size > MAX_UPLOAD_BYTES || file.buffer.length > MAX_UPLOAD_BYTES)
     throw new BadRequestException("Image must be 10 MB or smaller");
 
   try {
     const image = sharp(file.buffer, { failOn: "error", limitInputPixels: MAX_INPUT_PIXELS });
     const metadata = await image.metadata();
-    const mime = ({ jpeg: "image/jpeg", png: "image/png", webp: "image/webp" } as Record<string, string>)[metadata.format ?? ""];
+    const mime = ({ jpeg: "image/jpeg", png: "image/png", webp: "image/webp" } as Record<string, string>)[
+      metadata.format ?? ""
+    ];
     if (!mime || file.mimetype !== mime || !metadata.width || !metadata.height || (metadata.pages ?? 1) !== 1)
       throw new BadRequestException("Only valid, single-frame JPEG, PNG and WebP images are supported");
     if (metadata.width * metadata.height > MAX_INPUT_PIXELS)
       throw new BadRequestException("Image dimensions are too large");
 
     // rotate() applies EXIF orientation; re-encoding also strips camera metadata.
-    const resized = await image.rotate().resize(maxEdge, maxEdge,
-      square ? { fit: "cover", position: "centre" } : { fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 68, effort: 4 }).toBuffer();
+    const resized = await image
+      .rotate()
+      .resize(
+        maxEdge,
+        maxEdge,
+        square ? { fit: "cover", position: "centre" } : { fit: "inside", withoutEnlargement: true },
+      )
+      .webp({ quality: 68, effort: 4 })
+      .toBuffer();
     let buffer = resized;
     for (const quality of [60, 52]) {
       if (buffer.length <= targetBytes) break;
@@ -31,9 +44,11 @@ export async function optimizeImage(file: ImageUpload, maxEdge = MAX_EDGE, squar
     }
     let edge = maxEdge;
     while (buffer.length > targetBytes && edge > 128) {
-      edge = Math.max(128, Math.floor(edge * .8));
-      buffer = await sharp(resized).resize(edge, edge, { fit: "inside", withoutEnlargement: true })
-        .webp({ quality: 52, effort: 4 }).toBuffer();
+      edge = Math.max(128, Math.floor(edge * 0.8));
+      buffer = await sharp(resized)
+        .resize(edge, edge, { fit: "inside", withoutEnlargement: true })
+        .webp({ quality: 52, effort: 4 })
+        .toBuffer();
     }
     return { buffer, ext: "webp" };
   } catch (error) {
