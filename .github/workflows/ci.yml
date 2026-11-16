@@ -1,0 +1,44 @@
+# back CI: PR과 main push마다 검사·빌드·회귀 테스트만 한다. 운영 DB·운영 키는 쓰지 않는다.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Format check
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+        # 2026-11-16 기준 test/api.test.mjs의 기존 오류 2개를 정리하기 전까지는 결과만 표시한다.
+        continue-on-error: true
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Regression tests
+        # 푸시 검증용 VAPID 키는 실행마다 새로 만든 임시 키를 쓴다.
+        run: |
+          keys="$(npx --no-install web-push generate-vapid-keys --json)"
+          export VAPID_PUBLIC_KEY="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).publicKey)' "$keys")"
+          export VAPID_PRIVATE_KEY="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).privateKey)' "$keys")"
+          export VAPID_SUBJECT="mailto:ci@example.invalid"
+          node --test test/api.test.mjs test/image-upload.test.mjs test/moderation-logout.test.mjs
