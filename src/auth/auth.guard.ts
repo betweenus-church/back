@@ -12,7 +12,6 @@ export class MemberGuard implements CanActivate {
   }
 }
 
-
 @Injectable()
 export class AdminGuard implements CanActivate {
   constructor(private readonly auth: AuthService) {}
