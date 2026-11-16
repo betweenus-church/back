@@ -5,9 +5,9 @@ export type ImageUpload = { buffer: Buffer; size: number; mimetype: string };
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_INPUT_PIXELS = 40_000_000;
-const MAX_EDGE = 1600;
+const MAX_EDGE = 1280;
 
-export async function optimizeImage(file: ImageUpload, maxEdge = MAX_EDGE, square = false): Promise<{ buffer: Buffer; ext: "webp" }> {
+export async function optimizeImage(file: ImageUpload, maxEdge = MAX_EDGE, square = false, targetBytes = 256 * 1024): Promise<{ buffer: Buffer; ext: "webp" }> {
   if (!file.buffer?.length || file.size > MAX_UPLOAD_BYTES || file.buffer.length > MAX_UPLOAD_BYTES)
     throw new BadRequestException("Image must be 10 MB or smaller");
 
@@ -21,9 +21,20 @@ export async function optimizeImage(file: ImageUpload, maxEdge = MAX_EDGE, squar
       throw new BadRequestException("Image dimensions are too large");
 
     // rotate() applies EXIF orientation; re-encoding also strips camera metadata.
-    const buffer = await image.rotate().resize(maxEdge, maxEdge,
+    const resized = await image.rotate().resize(maxEdge, maxEdge,
       square ? { fit: "cover", position: "centre" } : { fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 78, effort: 4 }).toBuffer();
+      .webp({ quality: 68, effort: 4 }).toBuffer();
+    let buffer = resized;
+    for (const quality of [60, 52]) {
+      if (buffer.length <= targetBytes) break;
+      buffer = await sharp(resized).webp({ quality, effort: 4 }).toBuffer();
+    }
+    let edge = maxEdge;
+    while (buffer.length > targetBytes && edge > 128) {
+      edge = Math.max(128, Math.floor(edge * .8));
+      buffer = await sharp(resized).resize(edge, edge, { fit: "inside", withoutEnlargement: true })
+        .webp({ quality: 52, effort: 4 }).toBuffer();
+    }
     return { buffer, ext: "webp" };
   } catch (error) {
     if (error instanceof BadRequestException) throw error;

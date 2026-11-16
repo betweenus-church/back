@@ -79,20 +79,26 @@ export class AdminService {
     } catch (error) { db.exec("ROLLBACK"); throw error; }
     return { password };
   }
+  private reportTarget(kind: string, id: number, createdAt: string | null) {
+    if (!createdAt) return undefined;
+    const table = { photo: "photos", word: "word_posts", prayer: "prayers", comment: "photo_comments" }[kind];
+    if (!table) return undefined;
+    if (kind === "comment") return this.data.db.prepare("SELECT c.*,p.image_file FROM photo_comments c JOIN photos p ON p.id=c.photo_id WHERE c.id=? AND c.created_at=? AND c.hidden=0 AND p.hidden=0").get(id, createdAt) as Row | undefined;
+    return this.data.db.prepare(`SELECT * FROM ${table} WHERE id=? AND created_at=? AND hidden=0`).get(id, createdAt) as Row | undefined;
+  }
   reports() {
-    return this.data.db.prepare(`SELECT r.id,r.kind,r.post_id AS postId,r.reason,r.status,r.action,r.resolution,r.created_at AS createdAt,r.handled_at AS handledAt,
-      CASE r.kind WHEN 'photo' THEN (SELECT caption FROM photos WHERE id=r.post_id)
-        WHEN 'word' THEN (SELECT text FROM word_posts WHERE id=r.post_id)
-        WHEN 'prayer' THEN (SELECT text FROM prayers WHERE id=r.post_id)
-        WHEN 'comment' THEN (SELECT text FROM photo_comments WHERE id=r.post_id) END AS excerpt,
-      m.name AS reporter FROM reports r JOIN members m ON m.id=r.reporter_id ORDER BY r.id DESC`).all();
+    const rows = this.data.db.prepare(`SELECT r.id,r.kind,r.post_id AS postId,r.reason,r.status,r.action,r.resolution,r.created_at AS createdAt,r.handled_at AS handledAt,r.target_created_at AS targetCreatedAt,
+      m.name AS reporter FROM reports r JOIN members m ON m.id=r.reporter_id ORDER BY r.id DESC`).all() as Row[];
+    return rows.map(row => {
+      const target = this.reportTarget(String(row.kind), Number(row.postId), row.targetCreatedAt as string | null);
+      return { ...row, targetAvailable: Boolean(target), excerpt: target?.caption ?? target?.text ?? null };
+    });
   }
   reportImage(id: number) {
-    const row = this.data.db.prepare(`SELECT p.image_file AS imageFile FROM reports r
-      LEFT JOIN photo_comments c ON r.kind='comment' AND c.id=r.post_id
-      JOIN photos p ON p.id=CASE WHEN r.kind='photo' THEN r.post_id ELSE c.photo_id END
-      WHERE r.id=? AND r.kind IN ('photo','comment')`).get(id) as { imageFile: string } | undefined;
-    if (!row || basename(row.imageFile) !== row.imageFile) throw new NotFoundException("Reported photo not found");
+    const report = this.data.db.prepare("SELECT kind,post_id,target_created_at FROM reports WHERE id=?").get(id) as { kind: string; post_id: number; target_created_at: string | null } | undefined;
+    const target = report && ["photo", "comment"].includes(report.kind) ? this.reportTarget(report.kind, report.post_id, report.target_created_at) : undefined;
+    if (!target || typeof target.image_file !== "string" || basename(target.image_file) !== target.image_file) throw new NotFoundException("Reported photo not found");
+    const row = { imageFile: target.image_file };
     let bytes: Buffer;
     try { bytes = readFileSync(resolve(process.env.UPLOAD_DIR || "./data/uploads", row.imageFile)); }
     catch { throw new NotFoundException("Reported photo not found"); }
@@ -107,23 +113,24 @@ export class AdminService {
     if (!["dismiss", "hide", "delete"].includes(String(action))) throw new BadRequestException("Invalid action");
     const resolution = stringField(body, "resolution", 500);
     const db = this.data.db;
-    const row = db.prepare("SELECT kind,post_id,status FROM reports WHERE id=?").get(id) as { kind: string; post_id: number; status: string } | undefined;
+    const row = db.prepare("SELECT kind,post_id,status,target_created_at FROM reports WHERE id=?").get(id) as { kind: string; post_id: number; status: string; target_created_at: string | null } | undefined;
     if (!row || row.status !== "pending") throw new NotFoundException("Pending report not found");
     const table = { photo: "photos", word: "word_posts", prayer: "prayers", comment: "photo_comments" }[row.kind];
     if (!table) throw new BadRequestException("Unknown report kind");
-    const owner = db.prepare(`SELECT member_id,hidden FROM ${table} WHERE id=?`).get(row.post_id) as { member_id: number; hidden: number } | undefined;
+    const owner = this.reportTarget(row.kind, row.post_id, row.target_created_at);
+    if (action !== "dismiss" && !owner) throw new ConflictException("원본이 삭제되었거나 확인할 수 없는 신고예요. 기각으로 검토를 종료해 주세요.");
     let notification: { title: string; body: string; url: string } | null = null;
     db.exec("BEGIN");
     try {
       if (action !== "dismiss") db.prepare(`UPDATE ${table} SET hidden=1 WHERE id=?`).run(row.post_id);
       db.prepare("UPDATE reports SET status='resolved',action=?,resolution=?,handled_at=? WHERE id=?").run(action as string, resolution, new Date().toISOString(), id);
       if (action === "delete" && owner && !owner.hidden) {
-        notification = this.inbox.moderationRemoved(owner.member_id, row.kind as "photo" | "word" | "prayer" | "comment", resolution, id);
+        notification = this.inbox.moderationRemoved(Number(owner.member_id), row.kind as "photo" | "word" | "prayer" | "comment", resolution, id);
       }
       db.exec("COMMIT");
     } catch (error) { db.exec("ROLLBACK"); throw error; }
     if (notification && owner) {
-      try { await this.push.sendToMember(owner.member_id, notification.title, notification.body, notification.url); }
+      try { await this.push.sendToMember(Number(owner.member_id), notification.title, notification.body, notification.url); }
       catch (error) { this.logger.warn(`Moderation push failed after report ${id}: ${String(error)}`); }
     }
     return { id, status: "resolved", action };

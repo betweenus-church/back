@@ -1,6 +1,20 @@
 # 사이 NestJS API
 
-Next.js 프론트엔드와 분리된 NestJS 서버입니다. Node.js 24 이상과 TypeScript 6을 사용합니다. 이 복사본은 npm으로 의존성을 설치할 수 있습니다. TypeScript의 `NodeNext` 모듈 해석으로 Node.js 실행 환경을 검사합니다. 운영 DB와 테스트 DB는 서버 PC의 서로 다른 폴더에 저장합니다.
+## 현재 운영 경로
+
+운영 코드는 바탕화면의 이 back 폴더와 형제 front 폴더를 기준으로 합니다. 공개 주소는 https://junsee.tail1d9293.ts.net 이며, API는 back에서 127.0.0.1:4000, 사용자·관리자 앱은 front에서 각각 3101·3102로 실행합니다. 프런트가 /api 및 /admin 경로를 전달합니다.
+
+- API 빌드: 이 폴더에서 `npm run typecheck`, `npm run build:production`.
+- API 실행: 이 폴더에서 `npm run start:production`. .env와 dist-production/main.js를 사용합니다. 이미 4000번 서버가 실행 중이면 중복 실행하지 않습니다.
+- 웹 빌드·실행: front에서 `pnpm build:server`, `pnpm start:server`. 웹 종료는 `pnpm stop:server`.
+- 운영 DB: E:\실 서버\sai.sqlite, 첨부파일: E:\실 서버\uploads. DB 스키마 v14와 기존 회원·세션·사진을 유지합니다.
+- .env에는 기존 운영 비밀번호·푸시 키, 공개 FRONTEND_ORIGIN, COOKIE_SECURE=true를 유지합니다. 비밀 값은 Git에 올리지 않습니다.
+- 말씀 좋아요, 사진 압축·썸네일, 신고 대상 식별 및 기기별 로그아웃 동작을 포함합니다.
+
+PC 재부팅 후 자동 실행은 별도로 등록하지 않았습니다. 서버를 다시 실행할 때도 D: 드라이브의 이전 프로젝트가 아닌 바탕화면의 두 폴더를 사용합니다. 운영 실행 로그는 .server 폴더에 저장합니다.
+
+
+Next.js 프론트엔드와 분리된 NestJS 서버입니다. Node.js 24 이상과 TypeScript 6을 사용합니다. 이 프로젝트는 npm으로 의존성을 설치할 수 있습니다. TypeScript의 `NodeNext` 모듈 해석으로 Node.js 실행 환경을 검사합니다. 운영 DB와 테스트 DB는 서버 PC의 서로 다른 폴더에 저장합니다.
 
 ## NestJS 코드 구조
 
@@ -18,10 +32,10 @@ Next.js 프론트엔드와 분리된 NestJS 서버입니다. Node.js 24 이상�
 ## 로컬 실행
 
 1. 이 back 폴더에서 `npm install`을 실행합니다. NestJS 공통 패키지는 `npm install @nestjs/common` 명령을 그대로 사용할 수 있습니다.
-2. 운영은 `.env.example` → `.env`, 테스트는 `.env.test.example` → `.env.test`를 사용합니다. 이 PC에는 두 로컬 설정이 생성되어 있습니다. 두 파일의 운영자 비밀번호는 별도로 관리하고 저장소에 넣지 마세요. 주 운영자 비밀번호 최소 길이는 12자입니다.
+2. 운영은 기존 `.env`, 테스트는 `.env.test.example` → `.env.test`를 사용합니다. 이 PC에는 운영 .env와 테스트 .env.test 설정이 생성되어 있습니다. 두 파일의 운영자 비밀번호는 별도로 관리하고 저장소에 넣지 마세요. 주 운영자 비밀번호 최소 길이는 12자입니다.
 3. 개발·검증은 `pnpm build` 후 테스트 API `pnpm start:test`(4100번)를 실행합니다.
 4. 프론트엔드 디렉터리에서 `pnpm dev`(3001번)를 실행합니다.
-5. `http://127.0.0.1:3001`로 접속합니다. 운영 API `pnpm start`(4000번)와 운영 웹 `pnpm start`(3000번)는 사용자가 명시적으로 요청한 경우에만 실행합니다.
+5. `http://127.0.0.1:3001`로 접속합니다. 운영 API와 웹 실행 명령은 위 현재 운영 경로 항목을 따릅니다.
 
 일반 Windows PowerShell과 VSCode 터미널에서 `npm install @nestjs/common` 설치를 확인했습니다. 타입 검사는 `npm run typecheck`로 실행합니다. 의존성은 npm이 생성한 package-lock.json으로 관리합니다. Node.js 설치 전에 열어 둔 터미널은 새로 열어 PATH 변경을 반영하세요. 테스트 API는 4100번 포트에 한 번만 실행합니다.
 
@@ -83,4 +97,4 @@ VAPID 키 쌍을 한 번 생성해 실행 환경의 `VAPID_PUBLIC_KEY`·`VAPID_P
 
 `pnpm typecheck`, `pnpm build`, `pnpm test`로 검사합니다. 통합 테스트는 `E:\테스트 서버` 아래에 일회성 하위 폴더와 DB를 만들고 종료 시 정리합니다. 영속적인 테스트 API는 `E:\테스트 서버\sai.sqlite`를 사용합니다. 테스트는 운영 DB에 데이터를 쓰지 않습니다. Next.js 개발 서버(3001번)는 테스트 API(4100번), 운영 서버(3000번)는 운영 API(4000번)를 사용합니다.
 
-현재 개발에는 테스트 API `127.0.0.1:4100`과 Next.js 개발 서버 `127.0.0.1:3001`을 사용합니다. 운영 서버(4000/3000)는 종료 상태를 기본으로 유지합니다. API는 설정된 프론트엔드 출처의 변경 요청만 허용하며, 다른 출처는 403으로 거절합니다. 외부 PWA 공개에는 HTTPS 역방향 프록시, 고정된 공개 주소, PC 자동 시작·재시작, 백업 및 복구 시험, 개인정보 보관 정책이 필요합니다. 아직 외부 공개는 수행하지 않았습니다. 백업할 때는 실행 중인 DB 파일만 복사하지 말고 SQLite 백업 기능을 사용하고, 사진 폴더도 함께 보관해야 합니다.
+현재 개발에는 테스트 API `127.0.0.1:4100`과 Next.js 개발 서버 `127.0.0.1:3001`을 사용합니다. 운영 서버는 API 4000과 사용자·관리자 웹 3101/3102를 사용합니다. API는 설정된 프론트엔드 출처의 변경 요청만 허용하며, 다른 출처는 403으로 거절합니다. 외부 PWA 공개에는 HTTPS 역방향 프록시, 고정된 공개 주소, PC 자동 시작·재시작, 백업 및 복구 시험, 개인정보 보관 정책이 필요합니다. 현재 외부 공개 주소는 위 현재 운영 경로 항목을 따릅니다. 백업할 때는 실행 중인 DB 파일만 복사하지 말고 SQLite 백업 기능을 사용하고, 사진 폴더도 함께 보관해야 합니다.

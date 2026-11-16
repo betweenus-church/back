@@ -25,6 +25,7 @@ async function main() {
             next: () => void,
         ) => {
             res.setHeader("Cache-Control", "no-store");
+            res.setHeader("X-Content-Type-Options", "nosniff");
             if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && !allowedOrigins.has(req.headers.origin ?? "")) {
                 res.status(403).json({ statusCode: 403, message: "Invalid request origin" });
                 return;

@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException, StreamableFile } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { readFile, writeFile, mkdir, unlink } from "node:fs/promises";
 import { DatabaseService } from "../database/database.service";
 import { seoulDate, validDate } from "../daily-word/date";
 import { DailyWordService } from "../daily-word/daily-word.service";
@@ -34,6 +35,12 @@ export class CommunityService {
         mkdirSync(this.uploadDir, { recursive: true });
     }
 
+    private transaction<T>(action: () => T): T {
+        this.data.db.exec("BEGIN IMMEDIATE");
+        try { const result = action(); this.data.db.exec("COMMIT"); return result; }
+        catch (error) { this.data.db.exec("ROLLBACK"); throw error; }
+    }
+
     noticeById(id: number) {
         const notice = this.data.db.prepare(
             "SELECT id,title,body,pinned,created_at AS createdAt FROM notices WHERE id=? AND status='published'",
@@ -54,9 +61,12 @@ export class CommunityService {
             .all();
         const words = db
             .prepare(
-                "SELECT w.*,m.name AS author,m.avatar_file AS author_avatar_file,m.status AS author_status FROM word_posts w JOIN members m ON m.id=w.member_id WHERE w.hidden=0 ORDER BY w.id DESC LIMIT 100",
+                `SELECT w.*,m.name AS author,m.avatar_file AS author_avatar_file,m.status AS author_status,
+                (SELECT count(*) FROM word_likes l WHERE l.word_id=w.id) AS likes,
+                EXISTS(SELECT 1 FROM word_likes l WHERE l.word_id=w.id AND l.member_id=?) AS liked
+                FROM word_posts w JOIN members m ON m.id=w.member_id WHERE w.hidden=0 ORDER BY w.id DESC LIMIT 100`,
             )
-            .all() as Row[];
+            .all(memberId) as Row[];
         const photos = db
             .prepare(
                 `SELECT p.*,m.name AS author,m.avatar_file AS author_avatar_file,m.status AS author_status,
@@ -78,11 +88,14 @@ export class CommunityService {
             wordPosts: words.map((row) => ({
                 id: row.id,
                 author: row.author,
+                authorId: row.author_status === "approved" ? row.member_id : null,
                 authorAvatarUrl: authorAvatarUrl(row),
                 text: row.text,
                 time: time(String(row.created_at)),
                 date: row.daily_word_date,
                 mine: row.member_id === memberId,
+                likes: row.likes,
+                liked: Boolean(row.liked),
             })),
             photos: photos.map((row) => this.photo(row, memberId)),
             prayers: prayers.map((row) => ({
@@ -109,13 +122,16 @@ export class CommunityService {
             tone: "leaf",
             mine: row.member_id === memberId,
             author: row.author,
+                authorId: row.author_status === "approved" ? row.member_id : null,
             authorAvatarUrl: authorAvatarUrl(row),
             imageUrl: `/api/photos/${row.id}/image`,
+            thumbnailUrl: `/api/photos/${row.id}/image?size=thumb`,
             likes: row.likes,
             liked: Boolean(row.liked),
             comments: comments.map((c) => ({
                 id: c.id,
                 author: c.author,
+                authorId: c.author_status === "approved" ? c.member_id : null,
                 authorAvatarUrl: authorAvatarUrl(c),
                 text: c.text,
                 time: time(String(c.created_at)),
@@ -143,23 +159,40 @@ export class CommunityService {
         const suppliedDate = (body as Record<string, unknown> | null)?.date;
         const date = suppliedDate === undefined ? seoulDate() : validDate(suppliedDate);
         this.dailyWord.get(date);
+        return this.transaction(() => {
         const id = Number(
             this.data.db
                 .prepare("INSERT INTO word_posts(member_id,text,created_at,daily_word_date) VALUES(?,?,?,?)")
                 .run(memberId, content, new Date().toISOString(), date).lastInsertRowid,
         );
         return { id, date };
+        });
     }
     words(memberId: number, date?: string) {
         const target = date === undefined ? seoulDate() : validDate(date);
         const rows = this.data.db.prepare(
-            "SELECT w.id,w.member_id,w.text,w.created_at,w.daily_word_date,m.name AS author,m.avatar_file AS author_avatar_file,m.status AS author_status FROM word_posts w JOIN members m ON m.id=w.member_id WHERE w.hidden=0 AND w.daily_word_date=? ORDER BY w.id DESC LIMIT 100",
-        ).all(target) as Row[];
+            `SELECT w.id,w.member_id,w.text,w.created_at,w.daily_word_date,m.name AS author,m.avatar_file AS author_avatar_file,m.status AS author_status,
+            (SELECT count(*) FROM word_likes l WHERE l.word_id=w.id) AS likes,
+            EXISTS(SELECT 1 FROM word_likes l WHERE l.word_id=w.id AND l.member_id=?) AS liked
+            FROM word_posts w JOIN members m ON m.id=w.member_id WHERE w.hidden=0 AND w.daily_word_date=? ORDER BY w.id DESC LIMIT 100`,
+        ).all(memberId, target) as Row[];
         return rows.map((row) => ({
-            id: row.id, author: row.author, authorAvatarUrl: authorAvatarUrl(row), text: row.text,
+            id: row.id, author: row.author,
+                authorId: row.author_status === "approved" ? row.member_id : null, authorAvatarUrl: authorAvatarUrl(row), text: row.text,
             time: time(String(row.created_at)), date: row.daily_word_date,
             mine: row.member_id === memberId,
+            likes: row.likes, liked: Boolean(row.liked),
         }));
+    }
+    likeWord(memberId: number, id: number) {
+        return this.transaction(() => {
+        const db = this.data.db;
+        if (!db.prepare("SELECT id FROM word_posts WHERE id=? AND hidden=0").get(id)) throw new NotFoundException("Word not found");
+        const removed = db.prepare("DELETE FROM word_likes WHERE word_id=? AND member_id=?").run(id, memberId);
+        if (!removed.changes) db.prepare("INSERT INTO word_likes(word_id,member_id) VALUES(?,?)").run(id, memberId);
+        const row = db.prepare("SELECT count(*) AS likes FROM word_likes WHERE word_id=?").get(id) as { likes: number };
+        return { liked: !removed.changes, likes: row.likes };
+        });
     }
     deleteWord(memberId: number, id: number) {
         const result = this.data.db.prepare("DELETE FROM word_posts WHERE id=? AND member_id=?").run(id, memberId);
@@ -176,28 +209,40 @@ export class CommunityService {
         const filename = `${randomUUID()}.${optimized.ext}`;
         writeFileSync(resolve(this.uploadDir, filename), optimized.buffer, { flag: "wx" });
         try {
+            return this.transaction(() => {
             const id = Number(
                 this.data.db
                     .prepare("INSERT INTO photos(member_id,caption,image_file,created_at) VALUES(?,?,?,?)")
                     .run(memberId, caption, filename, new Date().toISOString()).lastInsertRowid,
             );
             return this.photoById(id, memberId);
+            });
         } catch (error) {
             unlinkSync(resolve(this.uploadDir, filename));
             throw error;
         }
     }
-    photoImage(id: number) {
+    async photoImage(id: number, thumbnail = false) {
         const row = this.data.db.prepare("SELECT image_file FROM photos WHERE id=? AND hidden=0").get(id) as
             | { image_file: string }
             | undefined;
         if (!row) throw new NotFoundException();
         const extension = row.image_file.split(".").pop();
         const type = extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : "image/jpeg";
-        return new StreamableFile(readFileSync(resolve(this.uploadDir, row.image_file)), {
-            type,
-            disposition: "inline",
-        });
+        if (!thumbnail) return new StreamableFile(await readFile(resolve(this.uploadDir, row.image_file)), { type, disposition: "inline" });
+        const directory = resolve(this.uploadDir, ".thumbnails");
+        const path = resolve(directory, `${row.image_file}.webp`);
+        let bytes: Buffer;
+        try { bytes = await readFile(path); }
+        catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+            const original = await readFile(resolve(this.uploadDir, row.image_file));
+            bytes = (await optimizeImage({ buffer: original, size: original.length, mimetype: type }, 480, false, 40 * 1024)).buffer;
+            await mkdir(directory, { recursive: true });
+            try { await writeFile(path, bytes, { flag: "wx" }); }
+            catch (writeError) { if ((writeError as NodeJS.ErrnoException).code !== "EEXIST") throw writeError; }
+        }
+        return new StreamableFile(bytes, { type: "image/webp", disposition: "inline" });
     }
     deletePhoto(memberId: number, id: number) {
         const row = this.data.db
@@ -210,16 +255,20 @@ export class CommunityService {
         } catch {
             /* A missing file cannot restore a deleted row. */
         }
+        void unlink(resolve(this.uploadDir, ".thumbnails", `${row.image_file}.webp`)).catch(() => {});
         return { ok: true };
     }
     likePhoto(memberId: number, id: number) {
+        return this.transaction(() => {
         this.photoById(id, memberId);
         const db = this.data.db;
         const removed = db.prepare("DELETE FROM photo_likes WHERE photo_id=? AND member_id=?").run(id, memberId);
         if (!removed.changes) db.prepare("INSERT INTO photo_likes(photo_id,member_id) VALUES(?,?)").run(id, memberId);
         return this.photoById(id, memberId);
+        });
     }
     addComment(memberId: number, photoId: number, body: unknown) {
+        return this.transaction(() => {
         this.photoById(photoId, memberId);
         const content = text(body, "text", 200);
         const id = Number(
@@ -229,6 +278,7 @@ export class CommunityService {
         );
         this.inbox.photoComment(photoId, id, memberId, content);
         return { id };
+        });
     }
     editComment(memberId: number, photoId: number, id: number, body: unknown) {
         const content = text(body, "text", 200);
@@ -249,12 +299,11 @@ export class CommunityService {
     }
     addPrayer(memberId: number, body: unknown) {
         const content = text(body, "text", 1000);
-        const id = Number(
-            this.data.db
-                .prepare("INSERT INTO prayers(member_id,text,created_at) VALUES(?,?,?)")
-                .run(memberId, content, new Date().toISOString()).lastInsertRowid,
-        );
-        return { id };
+        return this.transaction(() => {
+            const id = Number(this.data.db.prepare("INSERT INTO prayers(member_id,text,created_at) VALUES(?,?,?)")
+                .run(memberId, content, new Date().toISOString()).lastInsertRowid);
+            return { id };
+        });
     }
     deletePrayer(memberId: number, id: number) {
         const result = this.data.db.prepare("DELETE FROM prayers WHERE id=? AND member_id=?").run(id, memberId);
@@ -286,14 +335,14 @@ export class CommunityService {
         const table = { photo: "photos", word: "word_posts", prayer: "prayers", comment: "photo_comments" }[
             String(kind) as "photo" | "word" | "prayer" | "comment"
         ];
-        if (!this.data.db.prepare(`SELECT id FROM ${table} WHERE id=? AND hidden=0`).get(postId as number))
-            throw new NotFoundException();
+        const target = this.data.db.prepare(`SELECT created_at FROM ${table} WHERE id=? AND hidden=0`).get(postId as number) as { created_at: string } | undefined;
+        if (!target) throw new NotFoundException();
         const reason = text(body, "reason", 500);
         if (/^기타\s*:?\s*$/.test(reason)) throw new BadRequestException("기타 신고 내용을 입력해 주세요");
         const id = Number(
             this.data.db
-                .prepare("INSERT INTO reports(reporter_id,kind,post_id,reason,created_at) VALUES(?,?,?,?,?)")
-                .run(memberId, kind as string, postId as number, reason, new Date().toISOString()).lastInsertRowid,
+                .prepare("INSERT INTO reports(reporter_id,kind,post_id,reason,created_at,target_created_at) VALUES(?,?,?,?,?,?)")
+                .run(memberId, kind as string, postId as number, reason, new Date().toISOString(), target.created_at).lastInsertRowid,
         );
         return { id, status: "pending" };
     }

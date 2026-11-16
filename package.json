@@ -11,7 +11,13 @@
     "start": "node --env-file=.env dist/main.js",
     "start:test": "node --env-file=.env.test dist/main.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --env-file=.env.test --test test/*.test.mjs"
+    "test": "node --env-file=.env.test --test test/*.test.mjs",
+    "build:production": "tsc -p tsconfig.json --outDir dist-production",
+    "start:production": "node --env-file=.env dist-production/main.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@nestjs/common": "^11.2.8",

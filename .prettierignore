@@ -1,0 +1,8 @@
+node_modules
+dist
+dist-production
+.server
+.test-data
+package-lock.json
+pnpm-lock.yaml
+*.log

@@ -14,3 +14,9 @@ data/
 dist-production/
 uploads/
 *.log
+
+.server/
+
+# AI 작업 문서는 저장소 밖(사이 프로젝트/ai-docs)에 둔다. 2026-11-16
+CLAUDE.md
+AGENTS.md

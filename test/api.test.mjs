@@ -268,8 +268,10 @@ test("membership, moderation and photo permissions survive server storage", asyn
     assert.ok(optimizedPhoto.length < originalPhoto.length);
     const photoInfo = await sharp(optimizedPhoto).metadata();
     assert.equal(photoInfo.format, "webp");
-    assert.equal(photoInfo.width, 1600);
-    assert.equal(photoInfo.height, 1200);
+    assert.ok(photoInfo.width > 0 && photoInfo.width <= 1280);
+    assert.ok(photoInfo.height > 0 && photoInfo.height <= 1280);
+    assert.ok(Math.abs(photoInfo.width / photoInfo.height - 4 / 3) < 0.01);
+    assert.ok(optimizedPhoto.length <= 256 * 1024);
     const storedPhotos = readdirSync(join(temp, "uploads")).filter((name) => name.endsWith(".webp"));
     const [storedPhoto] = storedPhotos;
     assert.ok(storedPhoto.endsWith(".webp"));

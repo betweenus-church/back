@@ -34,6 +34,9 @@ export class CommunityController {
     @Get("words") words(@Req() req: ApiRequest, @Query("date") date?: string) {
         return this.community.words(req.member!.id, date);
     }
+    @Post("words/:id/like") likeWord(@Req() req: ApiRequest, @Param("id", ParseIntPipe) id: number) {
+        return this.community.likeWord(req.member!.id, id);
+    }
     @Delete("words/:id") deleteWord(@Req() req: ApiRequest, @Param("id", ParseIntPipe) id: number) {
         return this.community.deleteWord(req.member!.id, id);
     }
@@ -47,8 +50,8 @@ export class CommunityController {
     @Get("photos/:id") photo(@Req() req: ApiRequest, @Param("id", ParseIntPipe) id: number) {
         return this.community.photoById(id, req.member!.id);
     }
-    @Get("photos/:id/image") image(@Param("id", ParseIntPipe) id: number) {
-        return this.community.photoImage(id);
+    @Get("photos/:id/image") image(@Param("id", ParseIntPipe) id: number, @Query("size") size?: string) {
+        return this.community.photoImage(id, size === "thumb");
     }
     @Delete("photos/:id") deletePhoto(@Req() req: ApiRequest, @Param("id", ParseIntPipe) id: number) {
         return this.community.deletePhoto(req.member!.id, id);
